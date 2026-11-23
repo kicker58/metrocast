@@ -25,18 +25,40 @@ object Updater {
     /** Tests can pretend the phone has these addresses. */
     @JvmField var testPhoneAddresses: List<String>? = null
 
-    /** The phone's own IPv4 addresses on Wi-Fi right now (e.g. 192.168.1.23). Empty on mobile data. */
+    /**
+     * The phone's own IPv4 addresses on Wi-Fi right now (e.g. 192.168.1.23). Empty on mobile data.
+     * Looks at every network, not just the main one: with a VPN on (e.g. Pixel's "VPN by Google") the main
+     * connection is the VPN, while the phone is still on your Wi-Fi underneath.
+     */
+    @Suppress("DEPRECATION")
     fun phoneWifiAddresses(context: Context): List<String> {
         testPhoneAddresses?.let { return it }
-        return runCatching {
+        val out = linkedSetOf<String>()
+        runCatching {
             val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
-            val net = cm.activeNetwork ?: return@runCatching emptyList()
-            val caps = cm.getNetworkCapabilities(net)
-            if (caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) != true) return@runCatching emptyList()
-            cm.getLinkProperties(net)?.linkAddresses.orEmpty()
-                .mapNotNull { (it.address as? java.net.Inet4Address)?.hostAddress }
-        }.getOrDefault(emptyList())
+            cm.allNetworks.forEach { n ->
+                val caps = cm.getNetworkCapabilities(n)
+                if (caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true) {
+                    cm.getLinkProperties(n)?.linkAddresses.orEmpty()
+                        .mapNotNullTo(out) { (it.address as? java.net.Inet4Address)?.hostAddress }
+                }
+            }
+        }
+        // Fallback: the Wi-Fi chip's own address.
+        if (out.isEmpty()) runCatching {
+            java.net.NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+                .filter { it.isUp && !it.isLoopback && it.name.startsWith("wlan") }
+                .flatMap { it.inetAddresses.toList() }
+                .filterIsInstance<java.net.Inet4Address>()
+                .mapNotNullTo(out) { it.hostAddress }
+        }
+        return out.toList()
     }
+
+    /** "This phone is at 192.168.1.23 on Wi-Fi." / "This phone isn't on Wi-Fi right now." — to show next to a problem. */
+    fun whereThePhoneIs(phoneAddresses: List<String>): String =
+        if (phoneAddresses.isEmpty()) "This phone isn't on Wi-Fi right now (or a VPN is hiding it)."
+        else "This phone is at ${phoneAddresses.joinToString(" / ")} on Wi-Fi."
 
     /**
      * True when the phone is on your home network: on Wi-Fi with an address in the same block as your

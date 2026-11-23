@@ -693,20 +693,19 @@ internal fun UpdatesCard(repo: Repository, edition: String) {
         )
         Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             androidx.compose.material3.Button(enabled = !busy && address.isNotBlank(), onClick = {
-                if (!com.metrocast.app.data.Updater.onHomeNetwork(address, com.metrocast.app.data.Updater.phoneWifiAddresses(ctx))) {
-                    status = "Connect to your home Wi-Fi first" +
-                        (com.metrocast.app.data.Updater.homeBlock(address)?.let { " (the phone should get an address starting $it.)" } ?: ".") +
-                        " Updates only come from your PC at home."
-                    return@Button
-                }
+                // You tapped it: always try your PC (only the 1 AM check insists on your home Wi-Fi first).
+                val phone = com.metrocast.app.data.Updater.phoneWifiAddresses(ctx)
+                val home = com.metrocast.app.data.Updater.onHomeNetwork(address, phone)
                 busy = true; status = "Checking…"; found = null
                 scope.launch {
                     val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.metrocast.app.data.Updater.check(address, com.metrocast.app.BuildConfig.VERSION_CODE) }
                     busy = false
                     when (r) {
                         is com.metrocast.app.data.Updater.Result.Available -> { found = r.info; status = "Version ${r.info.versionName} is ready." + if (r.info.notes.isNotBlank()) " ${r.info.notes}" else "" }
-                        is com.metrocast.app.data.Updater.Result.UpToDate -> status = "You're up to date."
-                        is com.metrocast.app.data.Updater.Result.Problem -> status = r.message
+                        is com.metrocast.app.data.Updater.Result.UpToDate -> status = "You're up to date (version ${r.versionName} is the newest on your PC)."
+                        is com.metrocast.app.data.Updater.Result.Problem -> status = r.message + if (home) "" else
+                            " " + com.metrocast.app.data.Updater.whereThePhoneIs(phone) +
+                                (com.metrocast.app.data.Updater.homeBlock(address)?.let { " Your PC is on $it.x: connect to that Wi-Fi, and turn off any VPN (Settings › Network › VPN) if one is on." } ?: "")
                     }
                 }
             }) { Text("Check for updates") }

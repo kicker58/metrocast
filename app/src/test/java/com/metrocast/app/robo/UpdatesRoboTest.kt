@@ -140,12 +140,19 @@ class UpdatesRoboTest {
         // And it'll try again on the next night at home (the day's turn wasn't used up).
         Updater.testPhoneAddresses = listOf("10.1.1.42")
         assertNotNull(r.dailyUpdateCheck())
-        // The button says why when you're away.
+        // Tapping the button always tries (a VPN can make the phone look away from home while it's on your Wi-Fi):
+        // the PC answers, so the update is found.
         Updater.testPhoneAddresses = listOf("172.16.4.4")
         compose.setContent { MetroCastTheme { com.metrocast.app.ui.SettingsScreen(r, onChanged = {}, onBack = {}) } }
         compose.onAllNodes(hasScrollAction())[0].performScrollToNode(hasText("Check for updates"))
         compose.onNodeWithText("Check for updates").performClick()
-        assertTrue(sees("Connect to your home Wi-Fi first")); assertTrue(sees("starting 10.1.1."))
+        compose.waitUntil(5_000) { sees("is ready") }
+        // Truly away (the PC doesn't answer): it says where the phone is and what to check.
+        FakeWmata.failing = mapOf("version.json" to java.io.IOException("unreachable"))
+        compose.onNodeWithText("Check for updates").performClick()
+        compose.waitUntil(5_000) { sees("Couldn't reach your PC") }
+        assertTrue(sees("This phone is at 172.16.4.4")); assertTrue(sees("Your PC is on 10.1.1.x")); assertTrue(sees("VPN"))
+        FakeWmata.failing = emptyMap()
     }
 
     @Test fun pcOffAtNightTriesOnceMore() {
