@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- sun glow + sun -->
+    <path android:fillColor="#33FFC24B" android:pathData="M69,21a18,18 0,1 1,0 36a18,18 0,1 1,0 -36z" />
+    <path android:fillColor="#FFC24B" android:pathData="M69,26a13,13 0,1 1,0 26a13,13 0,1 1,0 -26z" />
+    <!-- rails -->
+    <path android:strokeColor="#E8ECF2" android:strokeWidth="3.5" android:strokeLineCap="round"
+        android:pathData="M45,78l-6,8M63,78l6,8" />
+    <!-- train body -->
+    <path android:fillColor="#F4F6FA"
+        android:pathData="M44,38h20a10,10 0,0 1,10 10v20a10,10 0,0 1,-10 10h-20a10,10 0,0 1,-10 -10v-20a10,10 0,0 1,10 -10z" />
+    <!-- destination sign -->
+    <path android:fillColor="#FFC24B" android:pathData="M47,41.5h14a1.5,1.5 0,0 1,0 3h-14a1.5,1.5 0,0 1,0 -3z" />
+    <!-- windshield -->
+    <path android:fillColor="#0F2557"
+        android:pathData="M43,47h22a4,4 0,0 1,4 4v6a4,4 0,0 1,-4 4h-22a4,4 0,0 1,-4 -4v-6a4,4 0,0 1,4 -4z" />
+    <path android:fillColor="#332E5BBA" android:pathData="M43,47h10l-8,14h-2a4,4 0,0 1,-4 -4v-6a4,4 0,0 1,4 -4z" />
+    <!-- silver line stripe -->
+    <path android:fillColor="#A1A9B0" android:pathData="M34,64h40v3h-40z" />
+    <!-- headlights -->
+    <path android:fillColor="#FFC24B" android:pathData="M42,70.4a2.6,2.6 0,1 1,0 5.2a2.6,2.6 0,1 1,0 -5.2z" />
+    <path android:fillColor="#FFC24B" android:pathData="M66,70.4a2.6,2.6 0,1 1,0 5.2a2.6,2.6 0,1 1,0 -5.2z" />
+</vector>

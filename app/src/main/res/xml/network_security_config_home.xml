@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The updates-from-your-PC copy: plain http is allowed so it can reach the update folder on your home
+     network (a PC address like 192.168.1.20). Every service the app uses is still called over https. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

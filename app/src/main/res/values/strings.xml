@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">MetroCast</string>
+    <string name="widget_name">MetroCast · Departure board</string>
+    <string name="widget_description">Weather plus your next Metro trains</string>
+    <string name="widget_pylon_name">MetroCast · Metro pylon</string>
+    <string name="widget_pylon_desc">Your station like a Metro pylon, with the next trains</string>
+    <string name="widget_next_name">MetroCast · Next train</string>
+    <string name="widget_next_desc">Big next-train minutes for going there and coming back</string>
+    <string name="widget_track_name">MetroCast · Live track</string>
+    <string name="widget_track_desc">Trains moving down your line toward your station</string>
+</resources>

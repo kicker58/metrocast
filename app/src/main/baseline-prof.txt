@@ -1,0 +1,5 @@
+# Startup profile: Android pre-compiles these when MetroCast is installed or updated, so it opens and
+# scrolls faster from the first launch (Compose's own libraries bring their own profiles too).
+# Everything in MetroCast's own code: hot, used at startup, and run after.
+HSPLcom/metrocast/app/**->**(**)**
+Lcom/metrocast/app/**;

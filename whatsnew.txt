@@ -1,0 +1,2 @@
+New, stronger signing key for MetroCast (a one-time reinstall: future updates install over it as usual).
+"What's new" now also shows when updating from an older version.

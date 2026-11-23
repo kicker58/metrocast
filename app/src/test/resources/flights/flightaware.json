@@ -1,0 +1,4 @@
+{"links":null,"num_pages":1,"flights":[
+{"ident":"UAL2051","ident_icao":"UAL2051","ident_iata":"UA2051","fa_flight_id":"UAL2051-1","operator":"UAL","operator_iata":"UA","flight_number":"2051","cancelled":false,"status":"Scheduled / Delayed","origin":{"code":"KIAD","code_iata":"IAD","name":"Washington Dulles Intl","city":"Washington"},"destination":{"code":"KSFO","code_iata":"SFO","name":"San Francisco Int'l","city":"San Francisco"},"departure_delay":2400,"scheduled_out":"2026-11-23T22:10:00Z","estimated_out":"2026-11-23T22:50:00Z","actual_out":null,"gate_origin":"C14","terminal_origin":null},
+{"ident":"UAL2051","ident_iata":"UA2051","cancelled":false,"status":"Arrived / Gate Arrival","origin":{"code_iata":"IAD","city":"Washington"},"destination":{"code_iata":"SFO","city":"San Francisco"},"scheduled_out":"2026-11-22T22:10:00Z","estimated_out":"2026-11-22T22:12:00Z","actual_out":"2026-11-22T22:12:00Z","gate_origin":"C10","terminal_origin":null}
+]}
