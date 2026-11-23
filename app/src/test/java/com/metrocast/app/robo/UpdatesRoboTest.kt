@@ -59,7 +59,7 @@ class UpdatesRoboTest {
         compose.onAllNodes(hasScrollAction())[0].performScrollToNode(hasText("Check for updates"))
         compose.onNodeWithText("Check for updates").performClick()
         compose.waitUntil(5_000) { sees("is ready") }
-        assertTrue(FakeWmata.requests.any { it == "http://192.168.1.20:8765/version.json" })
+        assertTrue(FakeWmata.seen().any { it == "http://192.168.1.20:8765/version.json" })
         // Not allowed to install yet: sends you to Android's switch for it.
         val app = ApplicationProvider.getApplicationContext<android.app.Application>()
         shadowOf(app.packageManager).setCanRequestPackageInstalls(false)
@@ -120,7 +120,7 @@ class UpdatesRoboTest {
         assertTrue(FakeWmata.requests.isEmpty())
         // Next night: asks again, but the same version isn't announced twice.
         app.getSystemService(android.app.NotificationManager::class.java).cancelAll(); r.dailyUpdateCheck(t0 + 24 * 3600_000L)
-        assertTrue(FakeWmata.requests.any { "version.json" in it }); assertTrue(nm.allNotifications.isEmpty())
+        assertTrue(FakeWmata.seen().any { "version.json" in it }); assertTrue(nm.allNotifications.isEmpty())
         // Opening the app never asks the PC: it just shows what was found.
         FakeWmata.requests.clear(); r.autoCheckUpdate(); assertTrue(FakeWmata.requests.isEmpty())
         // Once that version is installed (or an older one is listed), it's forgotten.
@@ -135,7 +135,7 @@ class UpdatesRoboTest {
         for (phone in listOf(listOf("192.168.1.77"), emptyList())) {
             Updater.testPhoneAddresses = phone
             assertNull(r.dailyUpdateCheck())
-            assertTrue(FakeWmata.requests.none { "version.json" in it })
+            assertTrue(FakeWmata.seen().none { "version.json" in it })
         }
         // And it'll try again on the next night at home (the day's turn wasn't used up).
         Updater.testPhoneAddresses = listOf("10.1.1.42")

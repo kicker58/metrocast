@@ -41,6 +41,12 @@ class Repository(context: Context) {
         result
     }
 
+    /** Live trains only (what the screen needs first). Never throws; returns the error to show, if any. */
+    suspend fun refreshTrainsNow(): String? = withContext(Dispatchers.IO) { refreshTrains() }
+
+    /** Weather only: never in the way of trains. Never throws; returns the error to show, if any. */
+    suspend fun refreshWeatherNow(force: Boolean = false): String? = withContext(Dispatchers.IO) { refreshWeather(force) }
+
     /** Track work, restrooms, bike parking, Amtrak/MARC/VRE schedules, elevators: the slower checks. */
     suspend fun refreshExtras() = withContext(Dispatchers.IO) {
         runCatching { loadTrackWork() } // WMATA's planned work; fetched at most every 6 hours
@@ -69,35 +75,35 @@ class Repository(context: Context) {
         if (key.isBlank()) return@coroutineScope null
         val trips = prefs.trips
         try {
+            // Live data first: arrivals and train positions are asked for straight away, while the
+            // slower things (station list, weekly track layout, ride times) load next to them.
             // Station list (names, transfer stations, map coordinates): fetched once, refreshed monthly.
-            if (StationDirectory.stations.isEmpty() || !stationsFile().exists()) {
+            val stationsJob = if (StationDirectory.stations.isEmpty() || !stationsFile().exists()) async(Dispatchers.IO) {
                 runCatching {
                     val raw = WmataApi.allStationsRaw(key)
                     StationDirectory.load(raw)
                     stationsFile().writeText(raw)
                 }
-            }
-            // Track layout (line station orders + where trains are): weekly. Needed by everything below.
-            runCatching {
-                val routesFile = routesFile()
-                if (!routesFile.exists() || System.currentTimeMillis() - routesFile.lastModified() > ROUTES_TTL_MS) {
-                    val routes = WmataApi.standardRoutesRaw(key)
-                    TrainTracker.parseRoutes(routes)
-                    routesFile.writeText(routes)
-                    cachedRoutes = null
+            } else null
+            // Track layout (line station orders + where trains are): weekly. Needed to place trains.
+            val routesJob = async(Dispatchers.IO) {
+                runCatching {
+                    val routesFile = routesFile()
+                    if (!routesFile.exists() || System.currentTimeMillis() - routesFile.lastModified() > ROUTES_TTL_MS) {
+                        val routes = WmataApi.standardRoutesRaw(key)
+                        TrainTracker.parseRoutes(routes)
+                        routesFile.writeText(routes)
+                        cachedRoutes = null
+                        cachedPositions = null // placed with the old layout
+                    }
                 }
             }
 
             // Ride time and fare per trip: fixed data, fetched once per station pair.
             trips.forEach { t -> ridesWanted += t.stationCode to t.destCode }
 
-            // Trip planner: ride times, and the boarding stations that need live predictions.
-            val planBoarding = preparePlan(key)
-
-            // Ride times and fares not known yet (first run, a new trip): all at once, not one by one.
-            val missing = synchronized(ridesWanted) { ridesWanted.toList().also { ridesWanted.clear() } }
-                .filter { (f, t) -> prefs.cached(rideKey(f, t)) == null }
-            missing.map { (f, t) -> async(Dispatchers.IO) { runCatching { ensureRide(f, t, key) } } }.forEach { it.await() }
+            // Trip planner: ride times, and the boarding stations that need live predictions (no network).
+            val planBoarding = runCatching { preparePlan(key) }.getOrDefault(emptyList())
 
             val codes = (trips.map { it.stationCode } + planBoarding).distinct()
             // Arrivals, alerts and train positions are fetched at the same time (faster to show).
@@ -106,7 +112,7 @@ class Repository(context: Context) {
             val predictions = async(Dispatchers.IO) {
                 runCatching {
                     if (codes.isNotEmpty()) {
-                        val raw = WmataApi.predictionsRaw(codes, key)
+                        val raw = retryOnce { WmataApi.predictionsRaw(codes, key) }
                         WmataApi.parsePredictions(raw).size.also { prefs.putCache(KEY_PREDICTIONS, raw) }
                     } else -1
                 }
@@ -120,17 +126,26 @@ class Repository(context: Context) {
                     notifyNewAlerts(incidents)
                 }
             }
-            // Live positions for every train (trip cards, line maps, Live trains).
+            // Live positions for every train (trip cards, line maps, Live trains): downloaded now,
+            // placed on the track once the layout is in.
             val positions = async(Dispatchers.IO) {
                 runCatching {
-                    val pos = WmataApi.trainPositionsRaw(key)
+                    val pos = retryOnce { WmataApi.trainPositionsRaw(key) }
+                    routesJob.await()
                     // Trains that can go on a map (with a line, given or worked out from the track).
                     val n = TrainTracker.fillLines(TrainTracker.parsePositions(pos), loadRoutes()).count { it.line != null }
                     prefs.putCache(KEY_POSITIONS, pos)
                     n
                 }.getOrNull()
             }
+
+            // Ride times and fares not known yet (first run, a new trip): all at once, next to the live data.
+            val missing = synchronized(ridesWanted) { ridesWanted.toList().also { ridesWanted.clear() } }
+                .filter { (f, t) -> prefs.cached(rideKey(f, t)) == null }
+            val rides = missing.map { (f, t) -> async(Dispatchers.IO) { runCatching { ensureRide(f, t, key) } } }
+
             alerts.await(); val placed = positions.await()
+            rides.forEach { it.await() }; stationsJob?.await(); routesJob.await()
             val arrivals = predictions.await().getOrThrow() // arrivals failing is the error to show
             // WMATA sometimes sends no usable train positions while trains are clearly running (their
             // feed is down): remember it, so the maps can say so instead of just looking empty.
@@ -139,6 +154,12 @@ class Repository(context: Context) {
         } catch (e: Exception) {
             friendly(e, "trains")
         }
+    }
+
+    /** One quick second try for a dropped connection (common right after the phone wakes up). */
+    private fun <T> retryOnce(f: () -> T): T = try { f() } catch (e: java.io.IOException) {
+        if (e is HttpException) throw e
+        Thread.sleep(700); f()
     }
 
     /** WMATA's train-position feed is missing trains right now, while arrivals show them running. */
@@ -709,14 +730,7 @@ class Repository(context: Context) {
     /** Makes sure the planner has what it needs; returns the station codes to get predictions for. */
     private fun preparePlan(key: String): List<String> {
         val routes = followedRoutes()
-        if (routes.isEmpty()) return emptyList()
-        if (StationDirectory.stations.isEmpty()) {
-            runCatching {
-                val raw = WmataApi.allStationsRaw(key)
-                StationDirectory.load(raw)
-                stationsFile().writeText(raw)
-            }
-        }
+        if (routes.isEmpty() || StationDirectory.stations.isEmpty()) return emptyList() // station list still loading
         val paths = linePaths()
         return routes.flatMap { (fromCode, toCode) ->
             val from = StationDirectory.find(fromCode) ?: return@flatMap emptyList()
@@ -944,6 +958,10 @@ class Repository(context: Context) {
     private fun liveState(): LiveState? {
         val from = prefs.liveFrom ?: return null
         val to = prefs.liveTo ?: return null
+        // A damaged saved trip (stations Metro doesn't have): drop it rather than follow nothing.
+        if (StationDirectory.stations.isNotEmpty() && (StationDirectory.find(from) == null || StationDirectory.find(to) == null)) {
+            endLiveTrip(); return null
+        }
         return LiveState(
             from, to, prefs.liveLeg.coerceAtLeast(0), prefs.liveTrainId, prefs.liveBoardedAt, prefs.liveLastStops, prefs.liveMinStops,
             prefs.liveLastEta.takeIf { it >= 0 }, prefs.liveLastEtaAt,

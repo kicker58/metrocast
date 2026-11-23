@@ -496,7 +496,7 @@ private fun TripCard(
             Spacer(Modifier.height(14.dp))
             when {
                 !hasKey -> Muted("Add a WMATA API key to see live times")
-                stale -> Muted("Pull down to load live times")
+                stale -> Muted("Loading live times…")
                 status.arrivals.isEmpty() -> Muted("No trains toward ${trip.towardName} predicted right now")
                 else -> ArrivalsBoard(status.arrivals.take(cardOptions.trains), line)
             }
@@ -782,9 +782,11 @@ private fun LineMapCard(line: String, map: com.metrocast.app.data.LineMap?, onOp
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text("$name Line live map", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                val all = map?.let { it.trains + it.branchTrains }.orEmpty()
                 val sub = if (map == null || map.stations.size < 2) "See where every $name Line train is right now"
+                // No trains placed yet (still loading, or WMATA's position feed is down): not "0 trains".
+                else if (all.isEmpty()) (if (com.metrocast.app.data.Repository.lastPositionsDown) "WMATA isn't sending train positions right now" else "Loading where the trains are…")
                 else {
-                    val all = map.trains + map.branchTrains
                     // Each direction named by its end of the line, e.g. "5 to Largo, 4 to Ashburn".
                     fun end(s: com.metrocast.app.data.Station) = com.metrocast.app.data.Arrival(0, com.metrocast.app.data.ArrivalKind.MINUTES, s.name, "").shortDestination
                     "${all.size} trains · ${all.count { it.eastbound }} to ${end(map.stations.last())}, ${all.count { !it.eastbound }} to ${end(map.stations.first())}"

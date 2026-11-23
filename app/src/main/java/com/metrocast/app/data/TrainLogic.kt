@@ -120,9 +120,12 @@ object TrainTracker {
         return positions.map { p -> if (p.line != null) p else linesAt[p.circuit]?.singleOrNull()?.let { p.copy(line = it) } ?: p }
     }
 
+    const val MAX_POSITIONS = 200
+
     fun parsePositions(raw: String): List<Position> {
         val arr = JSONObject(raw).getJSONArray("TrainPositions")
-        return (0 until arr.length()).map { i ->
+        // Metro runs about 150 trains at its busiest: past 200, the rest is a broken answer, not more trains.
+        return (0 until minOf(arr.length(), MAX_POSITIONS)).map { i ->
             val o = arr.getJSONObject(i)
             Position(
                 trainId = o.str("TrainId") ?: "$i",

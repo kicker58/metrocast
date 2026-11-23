@@ -36,10 +36,10 @@ class WidgetTapRoboTest {
         // The 30-second tick and the ↻ button: trains and weather only.
         runBlocking { MetroWidget.refreshQuietly(ctx) }
         runBlocking { MetroWidget.refreshAll(ctx, forceWeather = true) }
-        assertTrue(FakeWmata.requests.toString(), FakeWmata.requests.none { u -> slow.any { it in u } })
-        assertTrue(FakeWmata.requests.any { "GetPrediction" in it })
+        assertTrue(FakeWmata.seen().toString(), FakeWmata.seen().none { u -> slow.any { it in u } })
+        assertTrue(FakeWmata.seen().any { "GetPrediction" in it })
         // The 15-minute background job does the slow checks.
         runBlocking { MetroWidget.refreshAll(ctx, extras = true) }
-        assertTrue(FakeWmata.requests.any { "restrooms.html" in it })
+        assertTrue(FakeWmata.seen().any { "restrooms.html" in it })
     }
 }

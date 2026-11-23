@@ -151,7 +151,7 @@ fun LiveTripScreen(
             }
             val plan = live.plan
             Text(
-                "${plan.from?.name} → ${plan.to?.name}",
+                "${plan.from?.name ?: "Your station"} → ${plan.to?.name ?: "your stop"}",
                 style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
             )
             Progress(live)

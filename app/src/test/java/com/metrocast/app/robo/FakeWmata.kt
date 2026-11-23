@@ -15,6 +15,8 @@ object FakeWmata {
 
     /** Requests seen, for checks like "the widget didn't call WMATA again". */
     val requests: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf<String>())
+    /** A copy that is safe to read while the app is still making requests. */
+    fun seen(): List<String> = synchronized(requests) { requests.toList() }
     /** Set to make a kind of request fail, e.g. "GetPrediction" to 500. */
     var failing: Map<String, Exception> = emptyMap()
     var snapshot = 1

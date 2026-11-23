@@ -66,7 +66,7 @@ class PublicBuildRoboTest {
         // Without a key: no calls to WMATA's API, a friendly message, no crash.
         FakeWmata.requests.clear()
         val r = runBlocking { repo.refresh() }
-        assertTrue(FakeWmata.requests.none { "api.wmata.com" in it && "GetPrediction" in it })
+        assertTrue(FakeWmata.seen().none { "api.wmata.com" in it && "GetPrediction" in it })
         assertTrue("message: ${r.trainError}", r.trainError == null || r.trainError!!.isNotBlank())
         repo.snapshot(); repo.lineMaps(); repo.liveTrip(); repo.trackWorkImpacts()
     }

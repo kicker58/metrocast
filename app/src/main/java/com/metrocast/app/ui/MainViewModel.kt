@@ -42,6 +42,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     private var job: Job? = null
+    /** Tests only: what the refresh machinery is doing right now. */
+    internal fun debugState() = "refresh running=${job?.isActive == true}, again=$again, retries=$retries, retry waiting=${retryJob?.isActive == true}, extras running=${extrasJob?.isActive == true}"
     // A refresh asked for while one is running (e.g. a new destination) runs right after it.
     private var again = false
 
@@ -57,8 +59,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         job = viewModelScope.launch {
             if (userInitiated) _state.update { it.copy(refreshing = true) }
-            // Trains and weather first (the screen updates as soon as they're in)…
-            val result = repo.refresh(forceWeather = userInitiated, extras = false)
+            // Weather on its own: trains never wait for it.
+            startWeather(force = userInitiated)
+            // Live trains first: the screen updates the moment they're in…
+            val trainError = repo.refreshTrainsNow()
             val (snapshot, maps, live) = build()
             val work = trackWork()
             val elev = runCatching { repo.myElevatorOutages() }.getOrDefault(emptyList())
@@ -72,10 +76,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     elevators = elev,
                     update = upd,
                     refreshing = false,
-                    weatherError = result.weatherError,
-                    trainError = result.trainError,
+                    trainError = trainError,
                 )
             }
+            // Trains didn't load (often the phone's connection still waking up): try again soon,
+            // not a whole refresh interval later. 3, 6, 12, 24 seconds, then the normal rhythm.
+            if (trainError != null && retries < 4) {
+                val wait = 3_000L shl retries
+                retries++
+                retryJob?.cancel()
+                retryJob = viewModelScope.launch { kotlinx.coroutines.delay(wait); refresh() }
+            } else if (trainError == null) retries = 0
             runCatching { MetroWidget.notifyChanged(getApplication()) }
             // …then the slower checks (track work, monthly lists, schedules) in their own job, so they
             // never hold up the next live refresh (a monthly schedule download can take minutes).
@@ -89,6 +100,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private var extrasJob: Job? = null
+    private var weatherJob: Job? = null
+    private var retryJob: Job? = null
+    private var retries = 0
+
+    /** Weather, alongside the trains: when it's in, only the weather part of the screen changes. */
+    private fun startWeather(force: Boolean) {
+        if (weatherJob?.isActive == true) return
+        weatherJob = viewModelScope.launch {
+            val err = repo.refreshWeatherNow(force)
+            val fresh = withContext(Dispatchers.Default) { repo.snapshot() }
+            _state.update {
+                it.copy(
+                    snapshot = it.snapshot.copy(weather = fresh.weather, weatherUpdatedAt = fresh.weatherUpdatedAt),
+                    weatherError = err,
+                )
+            }
+        }
+    }
+
 
     /** The slower background checks, one at a time, alongside (never in the way of) live refreshes. */
     private fun startExtras() {

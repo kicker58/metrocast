@@ -24,11 +24,17 @@ object WmataApi {
     // ---- Real-time arrival predictions ----
 
     fun predictionsRaw(stationCodes: List<String>, apiKey: String): String =
-        get("/StationPrediction.svc/json/GetPrediction/${stationCodes.joinToString(",")}", apiKey)
+        get("/StationPrediction.svc/json/GetPrediction/${stationCodes.joinToString(",")}", apiKey).also { sane(it, 2_000_000) }
+
+    /** A real answer is tens of KB: something hundreds of times bigger is broken, and isn't worth reading or keeping. */
+    private fun sane(raw: String, max: Int) { if (raw.length > max) throw java.io.IOException("WMATA sent a broken answer (too large)") }
+
+    const val MAX_PREDICTIONS = 800
 
     fun parsePredictions(raw: String): List<RawTrain> {
         val arr = JSONObject(raw).getJSONArray("Trains")
-        return (0 until arr.length()).map { i ->
+        // A handful of stations' next trains is a few dozen: far more is a broken answer.
+        return (0 until minOf(arr.length(), MAX_PREDICTIONS)).map { i ->
             val o = arr.getJSONObject(i)
             val line = o.str("Line") ?: ""
             val signName = o.str("DestinationName") ?: o.str("Destination") ?: ""
@@ -148,7 +154,7 @@ object WmataApi {
     // ---- Live train positions ----
 
     fun trainPositionsRaw(apiKey: String): String =
-        get("/TrainPositions/TrainPositions?contentType=json", apiKey)
+        get("/TrainPositions/TrainPositions?contentType=json", apiKey).also { sane(it, 1_000_000) }
 
     fun standardRoutesRaw(apiKey: String): String =
         get("/TrainPositions/StandardRoutes?contentType=json", apiKey)

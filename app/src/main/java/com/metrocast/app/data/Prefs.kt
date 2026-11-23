@@ -19,6 +19,9 @@ class Prefs(context: Context) {
     @Volatile private var menuCache: Pair<String, List<Pair<MenuItem, Boolean>>>? = null
 
     private val sp = context.applicationContext.getSharedPreferences("metrocast", Context.MODE_PRIVATE)
+    // Downloaded data lives in its own files, not in the settings file: a refresh every few seconds then
+    // never rewrites your settings, and a tap that saves a setting never waits on a big download being saved.
+    private val cacheDir = java.io.File(context.applicationContext.filesDir, "cache")
 
     /** WMATA key: the one typed in Settings, or the built-in one when that's empty. */
     var apiKey: String
@@ -29,8 +32,9 @@ class Prefs(context: Context) {
         get() = sp.getString("loc_name", null) ?: DEFAULT_LOCATION.first
         private set(v) = sp.edit { putString("loc_name", v) }
 
-    val lat: Double get() = sp.getString("lat", null)?.toDoubleOrNull() ?: DEFAULT_LOCATION.second
-    val lon: Double get() = sp.getString("lon", null)?.toDoubleOrNull() ?: DEFAULT_LOCATION.third
+    // A damaged value (not a number, or off the globe) falls back to the default spot.
+    val lat: Double get() = sp.getString("lat", null)?.toDoubleOrNull()?.takeIf { it.isFinite() && it in -90.0..90.0 } ?: DEFAULT_LOCATION.second
+    val lon: Double get() = sp.getString("lon", null)?.toDoubleOrNull()?.takeIf { it.isFinite() && it in -180.0..180.0 } ?: DEFAULT_LOCATION.third
 
     fun setLocation(name: String, lat: Double, lon: Double) = sp.edit {
         putString("loc_name", name)
@@ -546,16 +550,42 @@ class Prefs(context: Context) {
 
     // ---- raw response cache ----
 
-    fun putCache(key: String, value: String, tag: String = "") = sp.edit {
-        putString("cache_$key", value)
-        putLong("cache_ts_$key", System.currentTimeMillis())
-        putString("cache_tag_$key", tag)
+    private fun cacheFile(key: String) = java.io.File(cacheDir, key.replace(Regex("[^A-Za-z0-9_.-]"), "_") + ".txt")
+
+    fun putCache(key: String, value: String, tag: String = "") {
+        val f = cacheFile(key)
+        runCatching {
+            cacheDir.mkdirs()
+            // Written whole, then swapped in: a reader never sees half a file.
+            val tmp = java.io.File(cacheDir, f.name + "." + Thread.currentThread().id + ".tmp")
+            tmp.writeText(value); if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }
+        }
+        memo.remove(key)
+        sp.edit {
+            remove("cache_$key") // an older version kept the data here
+            putLong("cache_ts_$key", System.currentTimeMillis())
+            putString("cache_tag_$key", tag)
+        }
     }
 
-    fun cached(key: String): String? = sp.getString("cache_$key", null)
+    /** Read once per update, not on every screen build. */
+    private val memo = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, String>>()
+
+    fun cached(key: String): String? {
+        val ts = cacheTime(key)
+        memo[key]?.let { (t, v) -> if (t == ts) return v }
+        val f = cacheFile(key)
+        val v = if (f.exists()) runCatching { f.readText() }.getOrNull()
+            // Moving over from an older version, which kept the data in the settings file.
+            else sp.getString("cache_$key", null)?.also { old ->
+                runCatching { cacheDir.mkdirs(); f.writeText(old) }.onSuccess { sp.edit { remove("cache_$key") } }
+            }
+        if (v != null) memo[key] = ts to v
+        return v
+    }
     fun cacheTime(key: String): Long = sp.getLong("cache_ts_$key", 0L)
     fun cacheTag(key: String): String = sp.getString("cache_tag_$key", "") ?: ""
-    fun clearCache(key: String) = sp.edit { remove("cache_$key"); remove("cache_ts_$key") }
+    fun clearCache(key: String) { memo.remove(key); runCatching { cacheFile(key).delete() }; sp.edit { remove("cache_$key"); remove("cache_ts_$key") } }
 }
 
 /** WMATA API key built into the app (Default Tier). A key typed in Settings takes its place. */

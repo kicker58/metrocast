@@ -231,16 +231,16 @@ class RepositoryRoboTest {
         val exits = repo.loadExits(StationDirectory.find("C04")!!)
         assertEquals(2, exits.size)
         // Exits are cached: no second request.
-        val before = FakeWmata.requests.count { "Entrances" in it }
+        val before = FakeWmata.seen().count { "Entrances" in it }
         repo.loadExits(StationDirectory.find("C04")!!)
-        assertEquals(before, FakeWmata.requests.count { "Entrances" in it })
+        assertEquals(before, FakeWmata.seen().count { "Entrances" in it })
     }
 
     @Test fun widgetTickReusesFreshData(): Unit = runBlocking {
         repo.refresh()
-        val n = FakeWmata.requests.size
+        val n = FakeWmata.seen().size
         assertFalse("data just loaded shouldn't need refreshing", repo.needsRefresh(25_000))
-        assertEquals(n, FakeWmata.requests.size)
+        assertEquals(n, FakeWmata.seen().size)
     }
 
     @Test fun transferNotificationPostsUpdatesAndClears() {

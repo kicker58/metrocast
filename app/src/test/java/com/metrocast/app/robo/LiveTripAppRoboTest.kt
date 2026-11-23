@@ -56,7 +56,7 @@ class LiveTripAppRoboTest {
     private fun waitFor(t: String) = try { compose.waitUntil(20_000) { sees(t) } } catch (e: Throwable) {
         val texts = compose.onAllNodes(androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(SemanticsProperties.Text)).fetchSemanticsNodes()
             .map { it.config[SemanticsProperties.Text].joinToString(" ") }
-        throw AssertionError("never saw \"$t\"; requests: ${FakeWmata.requests.map { it.substringBefore("?").substringAfterLast("/") }}; plan_to=${ctx.getSharedPreferences("metrocast", Context.MODE_PRIVATE).getString("plan_to", null)}; on screen: ${texts.take(40)}", e)
+        throw AssertionError("never saw \"$t\"; requests: ${FakeWmata.seen().map { it.substringBefore("?").substringAfterLast("/") }}; plan_to=${ctx.getSharedPreferences("metrocast", Context.MODE_PRIVATE).getString("plan_to", null)}; on screen: ${texts.take(40)}", e)
     }
     private fun tap(t: String) { waitFor(t); compose.onNodeWithText(t, substring = true).performClick(); compose.waitForIdle() }
 

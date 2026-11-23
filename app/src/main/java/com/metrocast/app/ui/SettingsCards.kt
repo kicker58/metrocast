@@ -370,6 +370,16 @@ internal fun <T> Choices(options: List<Pair<T, String>>, selected: T, onPick: (T
 @Composable
 internal fun Label(t: String) = Text(t, style = MaterialTheme.typography.labelMedium, letterSpacing = 1.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
 
+/**
+ * The list with the matching row moved [delta] places, found where it is *now*: two taps before the screen
+ * catches up then move it twice, never a row that isn't there. Moves past either end (or above [lowest]) do nothing.
+ */
+internal fun <T> List<T>.moved(delta: Int, lowest: Int = 0, match: (T) -> Boolean): List<T> {
+    val from = indexOfFirst(match); val to = from + delta
+    if (from < 0 || to < lowest || to > lastIndex) return this
+    return toMutableList().apply { add(to, removeAt(from)) }
+}
+
 /** Show, hide and reorder the parts of the home screen. */
 @Composable
 internal fun HomeLayoutCard(repo: Repository, onChanged: () -> Unit) {
@@ -385,9 +395,9 @@ internal fun HomeLayoutCard(repo: Repository, onChanged: () -> Unit) {
                     val off = (sec == com.metrocast.app.data.HomeSection.WEATHER || sec == com.metrocast.app.data.HomeSection.FORECAST) && !repo.prefs.weatherEnabled
                     Text(if (off) "Weather is off (see Weather below)" else sec.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = { save(sections.toMutableList().apply { add(i - 1, removeAt(i)) }) }, enabled = i > 0) { Icon(Icons.Default.KeyboardArrowUp, "Move ${sec.title} up") }
-                IconButton(onClick = { save(sections.toMutableList().apply { add(i + 1, removeAt(i)) }) }, enabled = i < sections.lastIndex) { Icon(Icons.Default.KeyboardArrowDown, "Move ${sec.title} down") }
-                Switch(checked = on, onCheckedChange = { v -> save(sections.toMutableList().apply { set(i, sec to v) }) })
+                IconButton(onClick = { save(sections.moved(-1) { it.first == sec }) }, enabled = i > 0) { Icon(Icons.Default.KeyboardArrowUp, "Move ${sec.title} up") }
+                IconButton(onClick = { save(sections.moved(1) { it.first == sec }) }, enabled = i < sections.lastIndex) { Icon(Icons.Default.KeyboardArrowDown, "Move ${sec.title} down") }
+                Switch(checked = on, onCheckedChange = { v -> save(sections.map { if (it.first == sec) sec to v else it }) })
             }
         }
         TextButton(onClick = { save(com.metrocast.app.data.HomeSection.entries.map { it to true }) }) { Text("Reset layout") }
@@ -516,9 +526,9 @@ internal fun MenuCard(repo: Repository) {
                 Text(item.emoji, fontSize = 18.sp, modifier = Modifier.width(30.dp))
                 Text(item.title, style = MaterialTheme.typography.bodyLarge, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
                     color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                IconButton(onClick = { save(items.toMutableList().apply { add(i - 1, removeAt(i)) }) }, enabled = i > 0) { Icon(Icons.Default.KeyboardArrowUp, "Move ${item.title} up") }
-                IconButton(onClick = { save(items.toMutableList().apply { add(i + 1, removeAt(i)) }) }, enabled = i < items.lastIndex) { Icon(Icons.Default.KeyboardArrowDown, "Move ${item.title} down") }
-                Switch(checked = on, onCheckedChange = { v -> save(items.toMutableList().apply { set(i, item to v) }) })
+                IconButton(onClick = { save(items.moved(-1) { it.first == item }) }, enabled = i > 0) { Icon(Icons.Default.KeyboardArrowUp, "Move ${item.title} up") }
+                IconButton(onClick = { save(items.moved(1) { it.first == item }) }, enabled = i < items.lastIndex) { Icon(Icons.Default.KeyboardArrowDown, "Move ${item.title} down") }
+                Switch(checked = on, onCheckedChange = { v -> save(items.map { if (it.first == item) item to v else it }) })
             }
         }
         TextButton(onClick = { save(com.metrocast.app.data.MenuItem.entries.map { it to true }) }) { Text("Reset menu") }

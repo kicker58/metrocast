@@ -53,20 +53,20 @@ class RailRoboTest {
     @Test fun schedulesLoadAndRefreshMonthly() {
         val r = repo()
         // The refresh fetched all three operators' schedules (the fake network serves the real files).
-        assertTrue(FakeWmata.requests.any { "mdotmta_gtfs_marc" in it }); assertTrue(FakeWmata.requests.any { "gtfs.vre.org" in it })
+        assertTrue(FakeWmata.seen().any { "mdotmta_gtfs_marc" in it }); assertTrue(FakeWmata.seen().any { "gtfs.vre.org" in it })
         val trains = r.railTrains()
         assertEquals(RailService.entries.toSet(), trains.map { it.service }.toSet())
         assertTrue(r.railCheckedAt(RailService.MARC) > 0); assertTrue(r.railCheckedAt(RailService.VRE) > 0)
         // Not again until next month.
         FakeWmata.requests.clear(); runBlocking { r.refresh() }
-        assertTrue(FakeWmata.requests.none { "mdotmta_gtfs_marc" in it || "gtfs.vre.org" in it || "content.amtrak.com" in it })
+        assertTrue(FakeWmata.seen().none { "mdotmta_gtfs_marc" in it || "gtfs.vre.org" in it || "content.amtrak.com" in it })
         // A failed download keeps what's there and waits a day.
         val ctx = ApplicationProvider.getApplicationContext<Context>()
         File(ctx.filesDir, "rail_MARC.json").setLastModified(System.currentTimeMillis() - 40L * 24 * 3600_000)
         FakeWmata.failing = mapOf("mdotmta_gtfs_marc" to java.io.IOException("offline"))
         assertEquals(0, r.refreshRail()); assertTrue(r.railTrains().any { it.service == RailService.MARC })
         FakeWmata.requests.clear(); r.refreshRail()
-        assertTrue(FakeWmata.requests.none { "mdotmta_gtfs_marc" in it })
+        assertTrue(FakeWmata.seen().none { "mdotmta_gtfs_marc" in it })
         // A garbage download doesn't replace a good schedule.
         FakeWmata.failing = emptyMap()
         Http_bytes { "not a zip".toByteArray() }
@@ -92,7 +92,7 @@ class RailRoboTest {
         assertTrue(sees("min Metro")); assertTrue(sees("30 early"))
         // Live status (Amtraker has nothing yet for it).
         compose.waitUntil(5_000) { sees("Not running yet") }
-        assertTrue(FakeWmata.requests.any { "amtraker.com" in it })
+        assertTrue(FakeWmata.seen().any { "amtraker.com" in it })
         // How early for Amtrak.
         page().performScrollToNode(hasText("45 min"))
         compose.onNodeWithText("45 min").performClick()

@@ -419,7 +419,7 @@ class TrackWorkRoboTest {
         assertTrue(first.size >= 10)
         assertTrue(first.single { it.kind == com.metrocast.app.data.TrackWork.Kind.WEEKEND }.changes.size == 3)
         FakeWmata.requests.clear()
-        repo.loadTrackWork(); assertTrue("re-downloaded too soon", FakeWmata.requests.none { "wmata.com/ride" in it })
+        repo.loadTrackWork(); assertTrue("re-downloaded too soon", FakeWmata.seen().none { "wmata.com/ride" in it })
         // A broken answer never wipes what we had.
         FakeWmata.bodies = mapOf("alerts_advisories_li" to "<html>503</html>")
         org.junit.Assert.assertEquals(first, repo.loadTrackWork(force = true))
@@ -429,7 +429,7 @@ class TrackWorkRoboTest {
         // Only public wmata.com pages, no API key or personal data.
         FakeWmata.bodies = emptyMap(); FakeWmata.failing = emptyMap(); FakeWmata.requests.clear()
         repo.loadTrackWork(force = true)
-        assertTrue(FakeWmata.requests.toString(), FakeWmata.requests.all { it.startsWith("https://www.wmata.com/") && "api_key" !in it })
+        assertTrue(FakeWmata.seen().toString(), FakeWmata.requests.all { it.startsWith("https://www.wmata.com/") && "api_key" !in it })
     }
 
     @Test fun headsUpThreeDaysAheadOnceForBothTrips() {
@@ -590,7 +590,7 @@ class RestroomUpdateRoboTest {
     }
     @After fun tearDown() { FakeWmata.uninstall(); com.metrocast.app.data.Restrooms.useLive("", null) }
 
-    private fun fetched() = FakeWmata.requests.count { it.endsWith("/restrooms.html") }
+    private fun fetched() = FakeWmata.seen().count { it.endsWith("/restrooms.html") }
 
     @Test fun monthlyCheckRetryAndOffline() {
         val repo = Repository(ctx)
@@ -715,7 +715,7 @@ class CustomizeRoboTest {
         repo.prefs.weatherEnabled = false
         FakeWmata.requests.clear()
         runBlocking { repo.refresh(forceWeather = true) }
-        assertTrue(FakeWmata.requests.none { "open-meteo" in it })
+        assertTrue(FakeWmata.seen().none { "open-meteo" in it })
         org.junit.Assert.assertNull(repo.snapshot().weather)
         assertTrue(!repo.needsRefresh(maxAgeMs = Long.MAX_VALUE))
         home()
@@ -1122,7 +1122,7 @@ class BikesPoliceRoboTest {
 
     @Test fun bikeListChecksWmataMonthly() {
         org.junit.Assert.assertTrue(com.metrocast.app.data.Bikes.isLive)          // the first refresh read WMATA's page
-        val fetched = { FakeWmata.requests.count { it.endsWith("/bike-and-ride.html") } }
+        val fetched = { FakeWmata.seen().count { it.endsWith("/bike-and-ride.html") } }
         FakeWmata.requests.clear(); runBlocking { repeat(3) { repo.refresh() } }
         org.junit.Assert.assertEquals(0, fetched())
         java.io.File(ctx.filesDir, "bike_and_ride.html").setLastModified(System.currentTimeMillis() - 31L * 24 * 3600_000)
@@ -1185,7 +1185,7 @@ class UnitsRoboTest {
         compose.onNodeWithText("Metric").performClick()
         // The forecast is fetched in metric now; train speed reads in km/h.
         FakeWmata.requests.clear(); runBlocking { repo.refresh(forceWeather = true) }
-        assertTrue(FakeWmata.requests.filter { "open-meteo" in it && "forecast" in it }.none { "fahrenheit" in it })
+        assertTrue(FakeWmata.seen().filter { "open-meteo" in it && "forecast" in it }.none { "fahrenheit" in it })
         org.junit.Assert.assertEquals("48 km/h", com.metrocast.app.data.TrainSpeed.Reading(30.0, false).text(repo.prefs.metric))
         FakeWmata.uninstall()
     }
@@ -1253,7 +1253,7 @@ class BikeModeEtcRoboTest {
         assertTrue(!repo.prefs.bikeshareOn); org.junit.Assert.assertEquals(1, dockLines())
         FakeWmata.requests.clear()
         runBlocking { org.junit.Assert.assertTrue(repo.loadBikeshare(repo.myStations()).isEmpty()) }
-        assertTrue(FakeWmata.requests.none { "lyft" in it || "capitalbikeshare" in it })
+        assertTrue(FakeWmata.seen().none { "lyft" in it || "capitalbikeshare" in it })
         // Bike mode switch.
         compose.onNodeWithText("I ride with a bike (bike mode)").performClick()
         assertTrue(repo.prefs.bikeMode); assertTrue(sees("Tell me when an elevator on my trips goes out"))
@@ -1266,9 +1266,9 @@ class BikeModeEtcRoboTest {
         val items = repo.loadSpecialNews()
         assertTrue(items.any { it.title.contains("Marine Corps Marathon") })
         FakeWmata.requests.clear(); repo.loadSpecialNews()
-        assertTrue("re-fetched within the month", FakeWmata.requests.none { "news_listing" in it })
+        assertTrue("re-fetched within the month", FakeWmata.seen().none { "news_listing" in it })
         repo.loadSpecialNews(force = true)
-        assertTrue(FakeWmata.requests.any { "news_listing" in it })
+        assertTrue(FakeWmata.seen().any { "news_listing" in it })
         // Notifications: off by default; on → nothing for already-known news.
         org.junit.Assert.assertEquals(0, repo.checkSpecialNews())
         repo.prefs.specialNewsAlerts = true
@@ -1444,7 +1444,7 @@ class CachingRoboTest {
             FakeWmata.requests.clear()
             repo.loadBikeshare(repo.myStations())
         }
-        assertTrue(FakeWmata.requests.none { "station_information" in it })
+        assertTrue(FakeWmata.seen().none { "station_information" in it })
         FakeWmata.uninstall()
     }
 }

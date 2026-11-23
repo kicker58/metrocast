@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -46,11 +47,16 @@ class MainActivity : ComponentActivity() {
 private fun MetroCastRoot(vm: MainViewModel = viewModel(), openRequest: String? = null, onOpened: () -> Unit = {}) {
     // First run: the walkthrough before anything else.
     var onboarding by rememberSaveable { mutableStateOf(vm.repo.needsOnboarding()) }
+    // Re-running the walkthrough from Settings: Back cancels it and returns to Settings, nothing changed.
+    var rerunSetup by rememberSaveable { mutableStateOf(false) }
+    var backToSettings by rememberSaveable { mutableStateOf(false) }
     if (onboarding) {
-        OnboardingScreen(vm.repo, onDone = { onboarding = false; vm.reloadFromCache(); vm.refresh() })
+        BackHandler(enabled = rerunSetup) { onboarding = false; rerunSetup = false; backToSettings = true }
+        OnboardingScreen(vm.repo, onDone = { onboarding = false; rerunSetup = false; vm.reloadFromCache(); vm.refresh() })
         return
     }
-    var showSettings by rememberSaveable { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(backToSettings) }
+    LaunchedEffect(Unit) { backToSettings = false }
     // Just updated: "What's new", once.
     var whatsNew by androidx.compose.runtime.remember { mutableStateOf(runCatching { vm.repo.whatsNewToShow() }.getOrNull()) }
     whatsNew?.let { lines ->
@@ -109,6 +115,14 @@ private fun MetroCastRoot(vm: MainViewModel = viewModel(), openRequest: String? 
                 else delay(every * 1_000L)
             }
         }
+    }
+
+    // Back online (e.g. the phone's connection woke up after the app opened): load trains right away.
+    val online = rememberOnline()
+    var wasOffline by remember { mutableStateOf(false) }
+    LaunchedEffect(online) {
+        if (!online) wasOffline = true
+        else if (wasOffline) { wasOffline = false; vm.refresh() }
     }
 
     fun closeMap() { mapLine = null; mapTripId = null }
@@ -294,7 +308,7 @@ private fun MetroCastRoot(vm: MainViewModel = viewModel(), openRequest: String? 
                 repo = vm.repo,
                 scrollTo = settingsFocus,
                 onChanged = vm::reloadFromCache,
-                onRunSetup = { vm.repo.prefs.onboarded = false; showSettings = false; onboarding = true },
+                onRunSetup = { showSettings = false; rerunSetup = true; onboarding = true },
                 onBack = {
                     showSettings = false
                     settingsFocus = null

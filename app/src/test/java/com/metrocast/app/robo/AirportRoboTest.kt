@@ -104,7 +104,7 @@ class AirportRoboTest {
         compose.onNodeWithText("Find AA 1234").performClick()
         compose.waitUntil(5_000) { sees("Delayed 25 min") }
         assertTrue(sees("Gate 23")); assertTrue(sees("Terminal 2")); assertTrue(sees("ORD"))
-        assertTrue(FakeWmata.requests.any { it.startsWith("http://api.aviationstack.com") && "flight_iata=AA1234" in it })
+        assertTrue(FakeWmata.seen().any { it.startsWith("http://api.aviationstack.com") && "flight_iata=AA1234" in it })
         // The plan uses the flight's own time; the delay is mentioned.
         assertTrue(sees("1:05 PM flight from Reagan National"))
         assertTrue(sees("running 25 min late"))
