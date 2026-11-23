@@ -57,7 +57,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         job = viewModelScope.launch {
             if (userInitiated) _state.update { it.copy(refreshing = true) }
-            val result = repo.refresh(forceWeather = userInitiated)
+            // Trains and weather first (the screen updates as soon as they're in)…
+            val result = repo.refresh(forceWeather = userInitiated, extras = false)
             val (snapshot, maps, live) = build()
             val work = trackWork()
             val elev = runCatching { repo.myElevatorOutages() }.getOrDefault(emptyList())
@@ -76,10 +77,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
             runCatching { MetroWidget.notifyChanged(getApplication()) }
+            // …then the slower checks (track work, monthly lists, schedules) in their own job, so they
+            // never hold up the next live refresh (a monthly schedule download can take minutes).
+            startExtras()
             if (again) {
                 again = false
                 job = null
                 refresh()
+            }
+        }
+    }
+
+    private var extrasJob: Job? = null
+
+    /** The slower background checks, one at a time, alongside (never in the way of) live refreshes. */
+    private fun startExtras() {
+        if (extrasJob?.isActive == true) return
+        extrasJob = viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                repo.refreshExtras()
+                val work = trackWork()
+                val elev = runCatching { repo.myElevatorOutages() }.getOrDefault(emptyList())
+                _state.update { it.copy(trackWork = work, elevators = elev) }
             }
         }
     }

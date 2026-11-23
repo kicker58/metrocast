@@ -137,7 +137,7 @@ fun RailScreen(
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = view == "trains", onClick = { view = "trains" }, label = { Text("🚆  Trains") })
-                    FilterChip(selected = view == "stations", onClick = { view = "stations" }, label = { Text("📍  Stations") })
+                    FilterChip(selected = view == "stations", onClick = { view = "stations" }, label = { Text("🚉  Stations") })
                 }
             }
             // Which service, then which line: narrows the stations and trains.
@@ -234,7 +234,7 @@ private fun StationCard(
                 },
                 style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary,
             )
-            Text("📍 ${st.note}", style = MaterialTheme.typography.bodySmall)
+            Text("🚶 ${st.note}", style = MaterialTheme.typography.bodySmall)
             if (next.isEmpty()) Text("No more trains from here in the next 24 hours.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             else Text(
                 "Next: " + next.joinToString(" · ") { (r, t) -> "${r.train.title} ${Format.time(t.toLocalTime())}" },
@@ -373,7 +373,7 @@ private fun OptionCard(
                 add("${o.earlyMin} early")
             }
             Text(parts.joinToString(" + ") + " = ${o.totalMin} min", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("📍 ${o.station.note}", style = MaterialTheme.typography.bodySmall)
+            Text("🚶 ${o.station.note}", style = MaterialTheme.typography.bodySmall)
             Text(
                 if (followed) "● Following this station live" else "Tap to follow this station live",
                 style = MaterialTheme.typography.labelLarge,

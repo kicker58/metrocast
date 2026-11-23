@@ -123,6 +123,9 @@ fun LineMapScreen(lineCode: String, map: LineMap?, focus: TripStatus?, highlight
                 .verticalScroll(scroll)
                 .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
         ) {
+            if (com.metrocast.app.data.Repository.lastPositionsDown) {
+                OfflineBanner("WMATA isn't sharing train locations right now (their live feed is empty). Arrival times still work.", Modifier.padding(bottom = 10.dp))
+            }
             focus?.let { FocusCard(it, lineColor) }
 
             if (map == null) {

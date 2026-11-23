@@ -4,7 +4,7 @@ A free, ad-free Android app for riding DC Metro: live trains, track work alerts,
 connections, and getting to Reagan National and Dulles. No account, no ads, no tracking: everything
 stays on your phone. Open source.
 
-**[⬇ Download MetroCast 1.20 (APK, 2.5 MB)](download/MetroCast-1.20.apk?raw=true)**
+**[⬇ Download MetroCast 1.23 (APK, 2.4 MB)](download/MetroCast-1.23.apk?raw=true)**
 
 > Unofficial. MetroCast is not made by, or affiliated with, WMATA (Metro), Amtrak, MARC or VRE.
 > Train data provided by WMATA.
@@ -33,10 +33,11 @@ stays on your phone. Open source.
 
 ## Install
 
-1. Download **MetroCast-1.20.apk** (link above) on your Android phone (Android 8.0 or newer).
+1. Download **MetroCast-1.23.apk** (link above) on your Android phone (Android 8.0 or newer).
 2. Open it. Android will ask you to allow installing apps from your browser or Files app: allow it, then tap **Install**.
    - It's not from the Play Store, so Android may show a warning or have Play Protect scan it. That's expected for apps installed this way.
-   - Had 1.19 from here? Uninstall it first: 1.20 is signed with a new key (a one-time change).
+   - Have 1.20 from here? Just install 1.23 over it: your trips and settings stay.
+   - Have 1.19 from here? Uninstall it first: 1.20 and later are signed with a new key (a one-time change).
 3. Open MetroCast. A short setup asks for your usual stations and (optionally) your ZIP code for weather.
 
 ### Get your free WMATA key (about 2 minutes)
@@ -50,10 +51,10 @@ MetroCast gets live train times straight from WMATA, which needs a free key:
 
 ## Checking the download
 
-SHA-256 of `MetroCast-1.20.apk`:
+SHA-256 of `MetroCast-1.23.apk`:
 
 ```
-b43c2b23cf674fa0ff7f491f6e539ae3054f8bbf21a735a1c14c31266c544f31
+4bea9ffef826c9edfcd0fa4b4864a71aa450e6c3d52c605d3907763c353c420a
 ```
 
 Signing certificate (SHA-256): `9e55cbc7f242ab9a9907a7436fbab7d058e9ca6769a0428210f4a5f9ab399cf1`

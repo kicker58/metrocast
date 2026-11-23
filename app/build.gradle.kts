@@ -124,6 +124,13 @@ android {
         unitTests.isIncludeAndroidResources = true
         // Screenshots of the map screens are saved only when asked for: -Pshots=<dir>
         unitTests.all { t -> (project.findProperty("shots") as String?)?.let { t.systemProperty("metrocast.shots", it) } }
+        // Simulated phones for N seconds each, in parallel: -Psim=<seconds> -PsimOut=<file>
+        unitTests.all { t ->
+            (project.findProperty("sim") as String?)?.let { t.systemProperty("metrocast.sim", it); t.maxParallelForks = 3; t.forkEvery = 1 }
+            (project.findProperty("simOut") as String?)?.let { t.systemProperty("metrocast.simout", it) }
+        }
+        // Diagnosis against the real WMATA: -PliveCheck
+        unitTests.all { t -> if (project.hasProperty("liveCheck")) t.systemProperty("metrocast.livecheck", "1") }
         // Screenshots to share: -PshareShots=<dir>
         unitTests.all { t -> (project.findProperty("shareShots") as String?)?.let { t.systemProperty("metrocast.shareshots", it) } }
         // Rebuilds the built-in Amtrak/MARC/VRE schedules from downloaded zips: -Prailgen=<dir>

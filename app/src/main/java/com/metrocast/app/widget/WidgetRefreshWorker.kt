@@ -17,7 +17,7 @@ class WidgetRefreshWorker(context: Context, params: WorkerParameters) : Coroutin
         val repo = com.metrocast.app.data.Repository(applicationContext)
         if (Widgets.anyInstalled(applicationContext)) {
             // A widget is showing: keep it fresh (trains, weather…), and its 30-second ticks going.
-            MetroWidget.refreshAll(applicationContext)
+            MetroWidget.refreshAll(applicationContext, extras = true)
             WidgetTicker.schedule(applicationContext)
         } else {
             // No widget: just what your turned-on alerts need. Saves battery and data.

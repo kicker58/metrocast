@@ -99,14 +99,19 @@ class MetroWidget : GlanceAppWidget() {
         suspend fun refreshQuietly(context: Context) {
             val repo = Repository(context)
             // While the app is open it refreshes every 30 s; reuse that instead of calling WMATA again.
-            if (repo.needsRefresh(maxAgeMs = 25_000)) repo.refresh()
+            // Trains and weather only: the slow checks run in the 15-minute background job.
+            if (repo.needsRefresh(maxAgeMs = 25_000)) repo.refresh(extras = false)
             notifyChanged(context, refreshing = false)
         }
 
-        suspend fun refreshAll(context: Context, forceWeather: Boolean = false) {
+        /** The widget's ↻ button and the 15-minute job: trains and weather first, drawn right away. */
+        suspend fun refreshAll(context: Context, forceWeather: Boolean = false, extras: Boolean = false) {
             notifyChanged(context, refreshing = true)
-            Repository(context).refresh(forceWeather)
+            val repo = Repository(context)
+            repo.refresh(forceWeather, extras = false)
             notifyChanged(context, refreshing = false)
+            // The slower checks only from the 15-minute job (never on a tap, never every 30 seconds).
+            if (extras) runCatching { repo.refreshExtras() }
         }
     }
 }

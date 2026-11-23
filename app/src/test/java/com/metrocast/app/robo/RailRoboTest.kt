@@ -163,7 +163,7 @@ class RailRoboTest {
     @Test fun stationsListShowsWhereAndHowFar() {
         val r = repo()
         compose.setContent { MetroCastTheme { RailScreen(r, onBack = {}, onPlan = { _, _ -> }, clock = { monday }) } }
-        compose.onNodeWithText("📍  Stations").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("🚉  Stations").performClick(); compose.waitForIdle()
         assertTrue(sees("closest to Wiehle-Reston East first"))
         // Every station with commuter rail or Amtrak is listed with how far it is from you.
         Rail.STATIONS.forEach { st ->
@@ -183,7 +183,7 @@ class RailRoboTest {
     @Test fun pickALineToNarrowStations() {
         val r = repo()
         compose.setContent { MetroCastTheme { RailScreen(r, onBack = {}, onPlan = { _, _ -> }, clock = { monday }) } }
-        compose.onNodeWithText("📍  Stations").performClick()
+        compose.onNodeWithText("🚉  Stations").performClick()
         compose.onAllNodesWithText("MARC").onFirst().performClick(); compose.waitForIdle()
         assertTrue(sees("WHICH LINE?"))
         compose.onNodeWithText("Brunswick Line").performClick(); compose.waitForIdle()
@@ -205,7 +205,7 @@ class RailRoboTest {
     @Test fun startingAtUnionStationSaysSo() {
         val r = repo(); r.prefs.planFrom = "B03"
         compose.setContent { MetroCastTheme { RailScreen(r, onBack = {}, onPlan = { _, _ -> }, clock = { monday }) } }
-        compose.onNodeWithText("📍  Stations").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("🚉  Stations").performClick(); compose.waitForIdle()
         assertTrue(sees("You start here"))
     }
 

@@ -694,7 +694,8 @@ private fun TrackTimeline(loc: TripLocation, lineColor: Color) {
         Spacer(Modifier.height(6.dp))
         if (loc.trains.isEmpty()) {
             Text(
-                "No train on its way yet — the next one hasn't started its run",
+                if (com.metrocast.app.data.Repository.lastPositionsDown) "WMATA isn't sharing train locations right now — the times above are still live"
+                else "No train on its way yet — the next one hasn't started its run",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

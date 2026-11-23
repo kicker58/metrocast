@@ -2,6 +2,7 @@ package com.metrocast.app.data
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
@@ -25,15 +26,29 @@ class Repository(context: Context) {
     data class RefreshResult(val weatherError: String?, val trainError: String?)
 
     /** Fetches fresh data into the cache. Never throws. */
-    suspend fun refresh(forceWeather: Boolean = false): RefreshResult = withContext(Dispatchers.IO) {
-        val weatherError = refreshWeather(forceWeather)
-        val trainError = refreshTrains()
+    /**
+     * Trains and weather at the same time (what the screen needs), then — unless [extras] is false —
+     * the slower background checks. The app shows trains as soon as the first part is done and runs
+     * [refreshExtras] after, so opening it after a while never waits on monthly downloads.
+     */
+    suspend fun refresh(forceWeather: Boolean = false, extras: Boolean = true): RefreshResult = withContext(Dispatchers.IO) {
+        val result = kotlinx.coroutines.coroutineScope {
+            val weather = async { refreshWeather(forceWeather) }
+            val trains = async { refreshTrains() }
+            RefreshResult(weather.await(), trains.await())
+        }
+        if (extras) refreshExtras()
+        result
+    }
+
+    /** Track work, restrooms, bike parking, Amtrak/MARC/VRE schedules, elevators: the slower checks. */
+    suspend fun refreshExtras() = withContext(Dispatchers.IO) {
         runCatching { loadTrackWork() } // WMATA's planned work; fetched at most every 6 hours
         runCatching { refreshRestrooms() } // WMATA's restroom list; checked about once a month
         runCatching { refreshBikes() }
         if (com.metrocast.app.BuildConfig.RAIL) runCatching { refreshRail() } // Amtrak, MARC & VRE schedules: about once a month     // WMATA's bike parking lists; also about once a month
         if (wantsElevators()) runCatching { loadElevatorOutages(); checkElevatorAlerts() }
-        RefreshResult(weatherError, trainError)
+        Unit
     }
 
     private fun refreshWeather(force: Boolean): String? = if (!prefs.weatherEnabled) null else try {
@@ -49,11 +64,11 @@ class Repository(context: Context) {
         friendly(e, "weather")
     }
 
-    private fun refreshTrains(): String? {
+    private suspend fun refreshTrains(): String? = kotlinx.coroutines.coroutineScope {
         val key = prefs.apiKey
-        if (key.isBlank()) return null
+        if (key.isBlank()) return@coroutineScope null
         val trips = prefs.trips
-        return try {
+        try {
             // Station list (names, transfer stations, map coordinates): fetched once, refreshed monthly.
             if (StationDirectory.stations.isEmpty() || !stationsFile().exists()) {
                 runCatching {
@@ -74,39 +89,60 @@ class Repository(context: Context) {
             }
 
             // Ride time and fare per trip: fixed data, fetched once per station pair.
-            trips.forEach { t -> ensureRide(t.stationCode, t.destCode, key) }
+            trips.forEach { t -> ridesWanted += t.stationCode to t.destCode }
 
             // Trip planner: ride times, and the boarding stations that need live predictions.
             val planBoarding = preparePlan(key)
 
-            val codes = (trips.map { it.stationCode } + planBoarding).distinct()
-            if (codes.isNotEmpty()) {
-                val raw = WmataApi.predictionsRaw(codes, key)
-                WmataApi.parsePredictions(raw)
-                prefs.putCache(KEY_PREDICTIONS, raw)
-            }
+            // Ride times and fares not known yet (first run, a new trip): all at once, not one by one.
+            val missing = synchronized(ridesWanted) { ridesWanted.toList().also { ridesWanted.clear() } }
+                .filter { (f, t) -> prefs.cached(rideKey(f, t)) == null }
+            missing.map { (f, t) -> async(Dispatchers.IO) { runCatching { ensureRide(f, t, key) } } }.forEach { it.await() }
 
-            // Service alerts: every 5 minutes.
-            if (System.currentTimeMillis() - prefs.cacheTime(KEY_INCIDENTS) > INCIDENTS_TTL_MS) {
+            val codes = (trips.map { it.stationCode } + planBoarding).distinct()
+            // Arrivals, alerts and train positions are fetched at the same time (faster to show).
+            // Each one catches its own failure (so a bad answer becomes a friendly message, not a crash,
+            // and one failing doesn't cancel the others).
+            val predictions = async(Dispatchers.IO) {
                 runCatching {
+                    if (codes.isNotEmpty()) {
+                        val raw = WmataApi.predictionsRaw(codes, key)
+                        WmataApi.parsePredictions(raw).size.also { prefs.putCache(KEY_PREDICTIONS, raw) }
+                    } else -1
+                }
+            }
+            // Service alerts: every 5 minutes.
+            val alerts = async(Dispatchers.IO) {
+                if (System.currentTimeMillis() - prefs.cacheTime(KEY_INCIDENTS) > INCIDENTS_TTL_MS) runCatching {
                     val raw = WmataApi.incidentsRaw(key)
                     val incidents = WmataApi.parseIncidents(raw)
                     prefs.putCache(KEY_INCIDENTS, raw)
                     notifyNewAlerts(incidents)
                 }
             }
-
             // Live positions for every train (trip cards, line maps, Live trains).
-            runCatching {
-                val pos = WmataApi.trainPositionsRaw(key)
-                TrainTracker.parsePositions(pos)
-                prefs.putCache(KEY_POSITIONS, pos)
+            val positions = async(Dispatchers.IO) {
+                runCatching {
+                    val pos = WmataApi.trainPositionsRaw(key)
+                    // Trains that can go on a map (with a line, given or worked out from the track).
+                    val n = TrainTracker.fillLines(TrainTracker.parsePositions(pos), loadRoutes()).count { it.line != null }
+                    prefs.putCache(KEY_POSITIONS, pos)
+                    n
+                }.getOrNull()
             }
+            alerts.await(); val placed = positions.await()
+            val arrivals = predictions.await().getOrThrow() // arrivals failing is the error to show
+            // WMATA sometimes sends no usable train positions while trains are clearly running (their
+            // feed is down): remember it, so the maps can say so instead of just looking empty.
+            lastPositionsDown = arrivals > 0 && placed == 0
             null
         } catch (e: Exception) {
             friendly(e, "trains")
         }
     }
+
+    /** WMATA's train-position feed is missing trains right now, while arrivals show them running. */
+    val positionsDown: Boolean get() = lastPositionsDown
 
     /** True if the widget should fetch before drawing. */
     fun needsRefresh(maxAgeMs: Long = 60_000): Boolean {
@@ -164,6 +200,9 @@ class Repository(context: Context) {
 
     private fun rideKey(t: Trip) = rideKey(t.stationCode, t.destCode)
     private fun rideKey(from: String, to: String) = "ride_${from}_$to"
+
+    /** Station pairs whose ride time and fare are needed (filled while planning; fetched together). */
+    private val ridesWanted = java.util.Collections.synchronizedSet(LinkedHashSet<Pair<String, String>>())
 
     private fun ensureRide(from: String, to: String, key: String) {
         val k = rideKey(from, to)
@@ -632,7 +671,7 @@ class Repository(context: Context) {
     private fun positions(ts: Long): List<TrainTracker.Position>? {
         cachedPositions?.let { (t, list) -> if (t == ts) return list }
         return prefs.cached(KEY_POSITIONS)
-            ?.let { runCatching { TrainTracker.parsePositions(it) }.getOrNull() }
+            ?.let { runCatching { TrainTracker.fillLines(TrainTracker.parsePositions(it), loadRoutes()) }.getOrNull() }
             ?.also { cachedPositions = ts to it }
     }
 
@@ -683,8 +722,8 @@ class Repository(context: Context) {
             val from = StationDirectory.find(fromCode) ?: return@flatMap emptyList()
             val to = StationDirectory.find(toCode) ?: return@flatMap emptyList()
             val route = Planner.plan(from, to, paths) ?: return@flatMap emptyList()
-            ensureRide(from.code, to.code, key)
-            route.legs.forEach { leg -> leg.options.firstOrNull()?.let { ensureRide(it.boardCode, it.alightCode, key) } }
+            ridesWanted += from.code to to.code
+            route.legs.forEach { leg -> leg.options.firstOrNull()?.let { ridesWanted += it.boardCode to it.alightCode } }
             // Boarding stations, plus transfer stations (to see when your train gets there).
             route.legs.flatMap { leg -> leg.options.map { it.boardCode } } +
                 route.legs.dropLast(1).flatMap { leg -> leg.options.map { it.alightCode } }
@@ -1208,6 +1247,8 @@ class Repository(context: Context) {
         const val ROUTES_TTL_MS = 7 * 24 * 60 * 60_000L
         const val TRACKWORK_TTL_MS = 6 * 60 * 60_000L
         const val RESTROOMS_TTL_MS = 30L * 24 * 60 * 60_000L
+        /** Shared with the screens: WMATA's train positions are missing right now. */
+        @Volatile var lastPositionsDown = false
         const val RESTROOMS_RETRY_MS = 24 * 60 * 60_000L
         const val TRACKWORK_NOTICE_DAYS = 3
 

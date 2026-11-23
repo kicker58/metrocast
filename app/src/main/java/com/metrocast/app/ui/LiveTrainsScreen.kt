@@ -121,6 +121,10 @@ fun LiveTrainsScreen(maps: Map<String, LineMap>, onBack: () -> Unit) {
             contentPadding = PaddingValues(bottom = 32.dp),
             modifier = Modifier.padding(padding).fillMaxSize(),
         ) {
+            // WMATA's position feed is down: say so (rather than an empty map).
+            if (com.metrocast.app.data.Repository.lastPositionsDown) item(key = "down") {
+                OfflineBanner("WMATA isn't sharing train locations right now (their live feed is empty). Arrival times still work.", Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp))
+            }
             // Lines: all, or one at a time.
             item(key = "chips") {
                 Row(

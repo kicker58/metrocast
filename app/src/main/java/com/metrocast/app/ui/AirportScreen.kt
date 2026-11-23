@@ -185,7 +185,7 @@ fun AirportScreen(
             // 5. The answer.
             if (plan != null) PlanCard(plan, start, live, onPlan)
             else if (time == null) Text("Set your flight time (or find your flight) to see when to leave.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("📍 ${airport.note}", style = MaterialTheme.typography.bodySmall)
+            Text("🚶 ${airport.note}", style = MaterialTheme.typography.bodySmall)
         }
     }
     if (picking) StationPickerDialog(title = "Your Metro station", repo = repo, selected = start, onPick = { start = it.code; picking = false }, onDismiss = { picking = false })

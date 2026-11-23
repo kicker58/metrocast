@@ -14,7 +14,7 @@ object FakeWmata {
     private fun read(dir: File, n: String) = File(dir, n).readText()
 
     /** Requests seen, for checks like "the widget didn't call WMATA again". */
-    val requests = mutableListOf<String>()
+    val requests: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf<String>())
     /** Set to make a kind of request fail, e.g. "GetPrediction" to 500. */
     var failing: Map<String, Exception> = emptyMap()
     var snapshot = 1
@@ -23,7 +23,11 @@ object FakeWmata {
 
     init { TestDefaults.use() }
 
+    /** Make some requests slow (by URL part → milliseconds), like a big monthly download. */
+    @Volatile var slow: Map<String, Long> = emptyMap()
+
     fun install() {
+        slow = emptyMap()
         TestDefaults.use()
         requests.clear(); failing = emptyMap(); bodies = emptyMap(); snapshot = 1
         Http.testResponder = { url -> respond(url) }
@@ -38,7 +42,8 @@ object FakeWmata {
     var liveFeeds: Map<String, ByteArray> = emptyMap()
 
     private fun respondBytes(url: String): ByteArray {
-        requests += url
+        synchronized(requests) { requests += url }
+        slow.entries.firstOrNull { url.contains(it.key) }?.let { Thread.sleep(it.value) }
         failing.entries.firstOrNull { url.contains(it.key) }?.let { throw it.value }
         liveFeeds.entries.firstOrNull { url.contains(it.key) }?.let { return it.value }
         return when {
@@ -51,7 +56,8 @@ object FakeWmata {
     }
 
     private fun respond(url: String): String {
-        requests += url
+        synchronized(requests) { requests += url }
+        slow.entries.firstOrNull { url.contains(it.key) }?.let { Thread.sleep(it.value) }
         failing.entries.firstOrNull { url.contains(it.key) }?.let { throw it.value }
         bodies.entries.firstOrNull { url.contains(it.key) }?.let { return it.value }
         return when {

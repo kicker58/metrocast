@@ -109,6 +109,17 @@ object TrainTracker {
         }
     }
 
+    /**
+     * WMATA sometimes leaves a train's line out. Where its track circuit is on only one line, that's
+     * its line; on shared track (e.g. Orange/Silver/Blue downtown) it stays unknown rather than guessed.
+     */
+    fun fillLines(positions: List<Position>, routes: List<Route>?): List<Position> {
+        if (routes.isNullOrEmpty() || positions.none { it.line == null }) return positions
+        val linesAt = HashMap<Int, MutableSet<String>>()
+        routes.forEach { r -> if (r.line.isNotBlank()) r.indexOfCircuit.keys.forEach { c -> linesAt.getOrPut(c) { HashSet() }.add(r.line) } }
+        return positions.map { p -> if (p.line != null) p else linesAt[p.circuit]?.singleOrNull()?.let { p.copy(line = it) } ?: p }
+    }
+
     fun parsePositions(raw: String): List<Position> {
         val arr = JSONObject(raw).getJSONArray("TrainPositions")
         return (0 until arr.length()).map { i ->

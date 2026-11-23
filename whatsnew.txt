@@ -1,2 +1,2 @@
-New, stronger signing key for MetroCast (a one-time reinstall: future updates install over it as usual).
-"What's new" now also shows when updating from an older version.
+Opening the app from a widget is faster: live trains load right away, the tap reuses the open app instead of starting a second copy, and widget refreshes no longer hold up train times with slower background checks.
+Amtrak, MARC & VRE: stations show a station sign (🚉) instead of a map pin; walking directions there and on Airports show a walker (🚶).
