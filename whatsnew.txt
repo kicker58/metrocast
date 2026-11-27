@@ -1,5 +1,2 @@
-Live trains show the moment you open the app: they no longer wait for the weather, and arrivals are asked for first (before the weekly track layout and ride times).
-If trains don't load on the first try (common right after your phone wakes up), MetroCast tries again within seconds, and as soon as your connection comes back.
-The home screen says "Loading live times…" and "Loading where the trains are…" while trains load, instead of showing 0 trains.
-Smoother: downloaded train data is kept in its own files, so saving a setting never waits on a refresh.
-Sturdier: re-running the setup walkthrough from Settings can be cancelled with Back; a damaged saved trip or location is ignored instead of showing a blank name or breaking the weather; tapping the move arrows quickly in Settings no longer crashes; at most 200 trains are read from WMATA.
+Trip planner: type the time you're leaving (like 5:30 or 845), then pick AM or PM. It's guessed for you until you tap one. The −/+ buttons still nudge it by 15 minutes. It opens right in the card, and shows 24-hour times if your phone uses them.
+Safer: a crash log you copy never contains your keys, and the widget setup screen only opens for MetroCast's own widgets.

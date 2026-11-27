@@ -82,6 +82,7 @@ fun HomeScreen(
     repo: com.metrocast.app.data.Repository,
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit,
+    onUpdate: () -> Unit = onOpenSettings,
     onOpenMap: (() -> Unit)? = null,
     onOpenTrip: (TripStatus) -> Unit = {},
     onTripsChanged: () -> Unit = {},
@@ -190,14 +191,14 @@ fun HomeScreen(
                 // A newer version is waiting on your PC: install it from Settings.
                 state.update?.let { u ->
                     item(key = "update") {
-                        Surface(onClick = onOpenSettings, shape = RoundedCornerShape(20.dp),
+                        Surface(onClick = onUpdate, shape = RoundedCornerShape(20.dp),
                             color = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                             modifier = Modifier.fillMaxWidth()) {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                                 Text("⬆", fontSize = 22.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
-                                    Text("Update ready on your PC", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                    Text("Version ${u.versionName} · tap to install", style = MaterialTheme.typography.bodySmall)
+                                    Text("MetroCast ${u.versionName} is ready", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                    Text("From your PC · tap to install", style = MaterialTheme.typography.bodySmall)
                                 }
                                 Text("›", style = MaterialTheme.typography.headlineSmall)
                             }

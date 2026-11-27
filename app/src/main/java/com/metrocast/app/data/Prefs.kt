@@ -282,6 +282,10 @@ class Prefs(context: Context) {
         get() = sp.getString("update_address", "").orEmpty()
         set(v) = sp.edit { putString("update_address", v.trim()) }
     /** The newer version the nightly check found (its version.json), until it's installed. */
+    /** Why the last update didn't install (shown in Settings), or null. */
+    var updateProblem: String?
+        get() = sp.getString("update_problem", null)
+        set(v) = sp.edit { if (v == null) remove("update_problem") else putString("update_problem", v) }
     var updateFound: String?
         get() = sp.getString("update_found", null)
         set(v) = sp.edit { if (v == null) remove("update_found") else putString("update_found", v) }

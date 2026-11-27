@@ -65,6 +65,40 @@ object Notifier {
         try { NotificationManagerCompat.from(context).notify(UPDATE_ID, n) } catch (_: SecurityException) {}
     }
 
+    /** "MetroCast 1.27 is ready — tap to install": the tap opens Android's Update button directly. */
+    fun updateConfirm(context: Context, versionName: String, confirm: Intent) {
+        if (!canPost(context)) return
+        createChannels(context)
+        val tap = PendingIntent.getActivity(context, 8, confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val n = NotificationCompat.Builder(context, UPDATES)
+            .setSmallIcon(R.drawable.ic_train)
+            .setContentTitle("MetroCast $versionName is ready")
+            .setContentText("Downloaded from your PC · tap to install")
+            .setContentIntent(tap)
+            .setAutoCancel(true)
+            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+        try { NotificationManagerCompat.from(context).notify(UPDATE_ID, n) } catch (_: SecurityException) {}
+    }
+
+    /** "MetroCast updated to 1.27" (silent): after an update installed by itself. */
+    fun updated(context: Context, versionName: String) {
+        if (!canPost(context)) return
+        createChannels(context)
+        val n = NotificationCompat.Builder(context, UPDATES)
+            .setSmallIcon(R.drawable.ic_train)
+            .setContentTitle("MetroCast updated to $versionName")
+            .setContentText("Tap to see what's new")
+            .setContentIntent(openApp(context))
+            .setAutoCancel(true)
+            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+        try { NotificationManagerCompat.from(context).notify(UPDATE_ID, n) } catch (_: SecurityException) {}
+    }
+
     /** The update it announced is installed now (or older): take the notification away. */
     fun clearUpdateIfInstalled(context: Context) {
         val found = com.metrocast.app.data.Prefs(context).updateFound?.let { com.metrocast.app.data.Updater.parse(it) }

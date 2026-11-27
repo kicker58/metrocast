@@ -10,6 +10,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.onFirst
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -105,6 +107,68 @@ class ScreensRoboTest {
         // People stepper.
         compose.onNodeWithText("+").performClick()
         mustSee("2 people", "one way for 2")
+    }
+
+    /** Opens "When are you leaving?" and types [text] into its Time box (replacing what's there). */
+    private fun typeLeavingTime(text: String) {
+        compose.onAllNodesWithText("Change", substring = true).onFirst().performClick()
+        mustSee("When are you leaving?", "Time")
+        compose.onNode(androidx.compose.ui.test.hasSetTextAction()).performTextReplacement(text)
+    }
+
+    @Test fun plannerTimeDoneRightAwayKeepsTheSuggestedTime() {
+        com.metrocast.app.ui.Format.use24h = false
+        show { PlannerScreen(state.snapshot.plan, repo, onChange = { _, _ -> }, onBack = {}, onStartLive = {}) }
+        compose.onAllNodesWithText("Change", substring = true).onFirst().performClick()
+        compose.onNodeWithText("Done").performClick()
+        compose.waitForIdle()
+        assert(!sees("Leaving now") && (sees(" AM") || sees(" PM"))) { "a time is set" }
+    }
+
+    @Test fun plannerTimeCanBeTyped() {
+        com.metrocast.app.ui.Format.use24h = false
+        show { PlannerScreen(state.snapshot.plan, repo, onChange = { _, _ -> }, onBack = {}, onStartLive = {}) }
+        // Typed with a colon, then PM.
+        typeLeavingTime("5:30")
+        compose.onNodeWithText("PM").performClick()
+        compose.onNodeWithText("Done").performClick()
+        mustSee("5:30 PM")
+        // Without a colon ("845" = 8:45), AM picked.
+        typeLeavingTime("845")
+        compose.onNodeWithText("AM").performClick()
+        compose.onNodeWithText("Done").performClick()
+        mustSee("8:45 AM")
+        // −/+ still nudge it, and the box follows.
+        compose.onAllNodesWithText("Change", substring = true).onFirst().performClick()
+        compose.onAllNodesWithText("+").let { it[it.fetchSemanticsNodes().size - 1] }.performClick()
+        compose.onNodeWithText("Done").performClick()
+        mustSee("9:00 AM")
+    }
+
+    @Test fun plannerTimeRejectsNonsense() {
+        com.metrocast.app.ui.Format.use24h = false
+        show { PlannerScreen(state.snapshot.plan, repo, onChange = { _, _ -> }, onBack = {}, onStartLive = {}) }
+        for (bad in listOf("99:99", "13:75", "0", "25", "::", "1.2.3")) {
+            typeLeavingTime(bad)
+            mustSee("Type the time")
+            compose.onNodeWithText("Done").assertIsNotEnabled()
+            // The dialog's "Leaving now" button: closes it, back to "now".
+            compose.onAllNodes(hasText("Leaving now") and androidx.compose.ui.test.hasClickAction()).let { it[it.fetchSemanticsNodes().size - 1] }.performClick()
+        }
+        // Letters and symbols can't even be typed.
+        typeLeavingTime("ab😀!7")
+        assert(compose.onAllNodes(androidx.compose.ui.test.hasSetTextAction() and hasText("7")).fetchSemanticsNodes().size == 1) { "only the digit stays" }
+    }
+
+    @Test fun plannerTimeOn24HourClock() {
+        com.metrocast.app.ui.Format.use24h = true
+        try {
+            show { PlannerScreen(state.snapshot.plan, repo, onChange = { _, _ -> }, onBack = {}, onStartLive = {}) }
+            typeLeavingTime("17:45")
+            assert(!sees("AM") && !sees("PM")) { "no AM/PM on a 24-hour clock" }
+            compose.onNodeWithText("Done").performClick()
+            mustSee("17:45")
+        } finally { com.metrocast.app.ui.Format.use24h = false }
     }
 
     @Test fun savedRoutesAndSmarTrip() {

@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <cache-path name="updates" path="updates/" />
+    <!-- Updates downloaded ahead of time (kept until installed). -->
+    <files-path name="ready" path="updates/" />
 </paths>

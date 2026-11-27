@@ -289,6 +289,17 @@ private fun SystemMap(
 ) {
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
+    // New positions arrive every few seconds: trains glide there (1.5 s) instead of jumping.
+    val glide = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(1f) }
+    var glideFrom by remember { mutableStateOf(maps) }
+    var glideTo by remember { mutableStateOf(maps) }
+    androidx.compose.runtime.LaunchedEffect(maps) {
+        if (maps === glideTo) return@LaunchedEffect
+        glideFrom = glideBetween(glideFrom, glideTo, glide.value) // from wherever they are now, mid-glide included
+        glideTo = maps
+        glide.snapTo(0f)
+        glide.animateTo(1f, androidx.compose.animation.core.tween(1500, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
+    }
     val colors = MapColors(MaterialTheme.colorScheme.onSurface, MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.onSurfaceVariant)
     val lines = remember(maps) { maps.mapValues { (_, m) -> listOf(m.stations, m.branchStations).filter { it.size >= 2 } } }
     var latestZoom by remember { mutableFloatStateOf(zoom) }
@@ -321,6 +332,29 @@ private fun SystemMap(
             },
     ) {
         val g = MapGeometry(size, zoom, pan, this)
-        drawMetro(g, lines, placeTrains(g, maps, visible), visible, measurer, colors, Labels.MAJOR_THEN_ALL, selected)
+        // Read only while drawing: a glide redraws the map, without recomposing the screen.
+        val now = if (glide.value >= 1f) maps else glideBetween(glideFrom, glideTo, glide.value)
+        drawMetro(g, lines, placeTrains(g, now, visible), visible, measurer, colors, Labels.MAJOR_THEN_ALL, selected)
+    }
+}
+
+/**
+ * The trains [t] of the way from [from] to [to] (0 = where they were, 1 = where they are now).
+ * A train only glides along its own line, the same way it's heading, and a few stations at most:
+ * one that turned around, changed line, or is new just appears in its new spot.
+ */
+internal fun glideBetween(from: Map<String, LineMap>, to: Map<String, LineMap>, t: Float): Map<String, LineMap> {
+    if (t >= 1f || from === to) return to
+    fun along(old: List<com.metrocast.app.data.MapTrain>, now: List<com.metrocast.app.data.MapTrain>): List<com.metrocast.app.data.MapTrain> {
+        val was = old.associateBy { it.id }
+        return now.map { n ->
+            val o = was[n.id]
+            if (o == null || o.eastbound != n.eastbound || kotlin.math.abs(o.pos - n.pos) > 3f) n
+            else n.copy(pos = o.pos + (n.pos - o.pos) * t)
+        }
+    }
+    return to.mapValues { (line, m) ->
+        val o = from[line] ?: return@mapValues m
+        m.copy(trains = along(o.trains, m.trains), branchTrains = along(o.branchTrains, m.branchTrains))
     }
 }

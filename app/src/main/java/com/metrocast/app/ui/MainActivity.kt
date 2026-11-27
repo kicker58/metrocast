@@ -37,6 +37,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // While on screen, an update confirmation can open straight away (instead of as a notification).
+    override fun onResume() { super.onResume(); com.metrocast.app.data.UpdateInstaller.foreground = true }
+    override fun onPause() { com.metrocast.app.data.UpdateInstaller.foreground = false; super.onPause() }
+
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         intent.getStringExtra(com.metrocast.app.notify.Notifier.OPEN)?.let { openRequest.value = it }
@@ -104,14 +108,18 @@ private fun MetroCastRoot(vm: MainViewModel = viewModel(), openRequest: String? 
 
     // Live refresh every 30 seconds while the app is on screen.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(lifecycle) {
+    // A live map open (Live trains or one line): every 10 s, about as often as WMATA moves its trains.
+    val watchingMap = showLive || mapLine != null
+    LaunchedEffect(lifecycle, watchingMap) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            vm.updateCheckOnOpen() // at home, at most every 6 hours: gets a new version ready
             while (true) {
                 vm.refresh()
-                // Faster while following a trip live; otherwise as chosen in Settings (0 = only on pull-down).
+                // Faster while watching a map or following a trip live; otherwise as chosen in Settings (0 = only on pull-down).
                 val every = vm.repo.prefs.refreshSeconds
-                if (showLiveTrip || state.live != null) delay(15_000)
-                else if (every == 0) { kotlinx.coroutines.awaitCancellation() }
+                if (every == 0 && !watchingMap) { kotlinx.coroutines.awaitCancellation() }
+                else if (watchingMap) delay(10_000)
+                else if (showLiveTrip || state.live != null) delay(15_000)
                 else delay(every * 1_000L)
             }
         }
@@ -320,6 +328,8 @@ private fun MetroCastRoot(vm: MainViewModel = viewModel(), openRequest: String? 
                 repo = vm.repo,
                 onRefresh = { vm.refresh(userInitiated = true) },
                 onOpenSettings = { showSettings = true },
+                // The update banner: installs right away when it's downloaded, else Settings at Check for updates.
+                onUpdate = { if (!vm.installReadyUpdate()) { settingsFocus = "update"; showSettings = true } },
                 onOpenMap = if (vm.repo.prefs.showSilverMap) ({ mapLine = vm.repo.prefs.homeMapLine; mapTripId = null; vm.refresh() }) else null,
                 onOpenTrip = { status -> mapLine = status.trip.lineCode; mapTripId = status.trip.id; vm.refresh() },
                 onTripsChanged = { vm.reloadFromCache(); vm.refresh() },

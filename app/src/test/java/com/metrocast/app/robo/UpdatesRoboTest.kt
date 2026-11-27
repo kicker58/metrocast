@@ -44,9 +44,10 @@ class UpdatesRoboTest {
         Updater.testPhoneAddresses = listOf("192.168.1.77", "10.0.0.9") // at home, on the same Wi-Fi as the PC
         FakeWmata.install()
         FakeWmata.liveFeeds = mapOf("MetroCast-Updates.apk" to apk)
+        Updater.testFindPc = { null } // no searching the real network in tests
         return Repository(ctx)
     }
-    @After fun done() { Updater.testEnabled = null; Updater.testPhoneAddresses = null; FakeWmata.uninstall() }
+    @After fun done() { Updater.testEnabled = null; Updater.testPhoneAddresses = null; Updater.testFindPc = null; com.metrocast.app.data.UpdateInstaller.testInstall = null; FakeWmata.uninstall() }
     private fun sees(t: String) = compose.onAllNodesWithText(t, substring = true).fetchSemanticsNodes().isNotEmpty()
 
     @Test fun checkDownloadAndInstall() {
@@ -66,8 +67,15 @@ class UpdatesRoboTest {
         compose.onNodeWithText("Install").performClick()
         assertTrue(sees("allow MetroCast to install updates"))
         assertEquals(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, shadowOf(app).nextStartedActivity?.action)
-        // Allowed: downloads, checks it, opens the installer.
+        // Allowed: downloads, checks it, hands it to Android's installer (no prompt where Android allows it).
         shadowOf(app.packageManager).setCanRequestPackageInstalls(true)
+        var handed: java.io.File? = null
+        com.metrocast.app.data.UpdateInstaller.testInstall = { f -> handed = f; true }
+        compose.onNodeWithText("Install").performClick()
+        compose.waitUntil(5_000) { sees("Installing") }
+        assertTrue(handed!!.readBytes().contentEquals(apk))
+        // If Android's installer session can't start: the older way, opening the installer screen.
+        com.metrocast.app.data.UpdateInstaller.testInstall = { false }
         compose.onNodeWithText("Install").performClick()
         compose.waitUntil(5_000) { sees("Opening the installer") || sees("Couldn't open") }
         assertTrue(compose.onAllNodes(hasText("", substring = true)).fetchSemanticsNodes().flatMap { n -> n.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Text) { emptyList() }.map { it.text } }.filter { "installer" in it }.toString(), sees("Opening the installer"))
@@ -101,6 +109,8 @@ class UpdatesRoboTest {
     @Test fun nightlyCheckAtMostOnceADay() {
         val r = repo()
         val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        // Not allowed to install by itself yet: it announces the update instead (installing is in SeamlessUpdatesRoboTest).
+        shadowOf(app.packageManager).setCanRequestPackageInstalls(false)
         shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
         val nm = shadowOf(app.getSystemService(android.app.NotificationManager::class.java))
         assertNull(r.dailyUpdateCheck())                       // no address: never asks
@@ -217,7 +227,7 @@ class UpdatesRoboTest {
         assertNotNull(u)
         var settings = false
         compose.setContent { MetroCastTheme { com.metrocast.app.ui.HomeScreen(com.metrocast.app.ui.UiState(snapshot = r.snapshot(), update = u), r, onRefresh = {}, onOpenSettings = { settings = true }) } }
-        compose.onNodeWithText("Update ready on your PC").performClick()
+        compose.onNodeWithText("is ready", substring = true).performClick()
         assertTrue(settings)
     }
 
@@ -225,7 +235,7 @@ class UpdatesRoboTest {
         val r = repo()
         compose.setContent { MetroCastTheme { com.metrocast.app.ui.SettingsScreen(r, onChanged = {}, onBack = {}, scrollTo = "update") } }
         compose.waitUntil(10_000) { sees("UPDATES FROM YOUR PC") }
-        assertTrue(sees("once a day, around 1 AM"))
+        assertTrue(sees("every night around 1 AM"))
     }
 
     @Test fun offInOtherCopies() {

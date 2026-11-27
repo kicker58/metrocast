@@ -752,30 +752,42 @@ private fun WhenPicker(
     onChange: (java.time.LocalDateTime?) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
-    val fmt = java.time.format.DateTimeFormatter.ofPattern("EEE MMM d, h:mm a")
-    Surface(onClick = { open = true }, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+    val fmt = java.time.format.DateTimeFormatter.ofPattern("EEE MMM d, ") // then the time, on your 12/24-hour clock
+    Surface(onClick = { open = !open }, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
             Column(Modifier.weight(1f)) {
                 Text(label, style = MaterialTheme.typography.labelSmall, letterSpacing = 1.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
-                    value?.format(fmt) ?: if (allowNone) noneLabel else "Leaving now",
+                    value?.let { it.format(fmt) + Format.time(it.toLocalTime()) } ?: if (allowNone) noneLabel else "Leaving now",
                     style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold,
                     color = if (value == null && allowNone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 )
             }
-            Text("Change  ▾", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+            Text(if (open) "Close  ▴" else "Change  ▾", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
         }
     }
     if (open) {
         val now = java.time.LocalDateTime.now()
         val start = value ?: now.plusMinutes(15 - now.minute % 15L).withSecond(0).withNano(0)
         var day by remember { mutableStateOf(start.toLocalDate()) }
-        var minutes by remember { mutableStateOf(start.hour * 60 + start.minute) }
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { open = false },
-            title = { Text(if (allowNone) "When are you coming back?" else "When are you leaving?") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val h24 = Format.use24h
+        // The time, typed (like the flight time on Airports): "5:45", "545", "17:45"… AM / PM is guessed from the
+        // hour (the next time it comes round) until you tap one. −/+ still nudge it by 15 minutes.
+        fun typed(t: java.time.LocalTime) = if (h24) "%d:%02d".format(t.hour, t.minute) else "%d:%02d".format((t.hour + 11) % 12 + 1, t.minute)
+        var text by remember { mutableStateOf(typed(start.toLocalTime())) }
+        var pmPicked by remember { mutableStateOf<Boolean?>(if (h24) null else start.hour >= 12) }
+        val hour12 = com.metrocast.app.data.Flights.typedHour(text)
+        val pm = pmPicked ?: hour12?.takeIf { it in 1..12 }?.let { com.metrocast.app.data.Flights.guessPm(it, day, now) } ?: true
+        val time = com.metrocast.app.data.Flights.parseTime(text, if (h24) null else pm)
+        fun nudge(by: Int) {
+            val base = time ?: start.toLocalTime()
+            val t = base.plusMinutes(by.toLong()).let { it.withMinute(it.minute - it.minute % 15).withSecond(0).withNano(0) }
+            text = typed(t); if (!h24) pmPicked = t.hour >= 12
+        }
+        // Opens right here in the card (like the flight time on Airports), not in a pop-up.
+        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(if (allowNone) "When are you coming back?" else "When are you leaving?", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         (0L..6L).forEach { d ->
                             val date = now.toLocalDate().plusDays(d)
@@ -786,28 +798,38 @@ private fun WhenPicker(
                             )
                         }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { minutes = (minutes - 15).mod(24 * 60) }) { Text("−", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
-                        Text(
-                            Format.time(java.time.LocalTime.of(minutes / 60, minutes % 60)),
-                            style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        IconButton(onClick = { nudge(-15) }) { Text("−", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+                        androidx.compose.material3.OutlinedTextField(
+                            value = text,
+                            onValueChange = { v -> text = v.filter { it.isDigit() || it == ':' || it == '.' }.take(5); pmPicked = null },
+                            singleLine = true,
+                            label = { Text("Time") },
+                            placeholder = { Text(if (h24) "17:45" else "5:45") },
+                            isError = text.isNotBlank() && time == null,
+                            textStyle = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
                         )
-                        IconButton(onClick = { minutes = (minutes + 15).mod(24 * 60) }) { Text("+", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+                        IconButton(onClick = { nudge(15) }) { Text("+", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
                     }
-                    val pick = day.atTime(minutes / 60, minutes % 60)
+                    if (!h24) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = !pm, onClick = { pmPicked = false }, label = { Text("AM", fontWeight = FontWeight.Bold) })
+                        FilterChip(selected = pm, onClick = { pmPicked = true }, label = { Text("PM", fontWeight = FontWeight.Bold) })
+                    }
+                    val pick = time?.let { day.atTime(it) }
                     Text(
-                        com.metrocast.app.data.Fares.period(pick).let { "${it.label} fare · ${it.hours}" },
-                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
+                        if (pick == null) (if (h24) "Type the time, like 17:45" else "Type the time, like 5:45, then pick AM or PM")
+                        else (if (pick.isBefore(now.withSecond(0).withNano(0))) "That's earlier today · " else "") +
+                            com.metrocast.app.data.Fares.period(pick).let { "${it.label} fare · ${it.hours}" },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (pick == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
                     )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        androidx.compose.material3.TextButton(onClick = { onChange(null); open = false }) { Text(if (allowNone) "No trip back" else "Leaving now") }
+                        androidx.compose.material3.TextButton(enabled = time != null, onClick = { time?.let { onChange(day.atTime(it)) }; open = false }) { Text("Done") }
+                    }
                 }
-            },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = { onChange(day.atTime(minutes / 60, minutes % 60)); open = false }) { Text("Done") }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { onChange(null); open = false }) { Text(if (allowNone) "No trip back" else "Leaving now") }
-            },
-        )
+        }
     }
 }

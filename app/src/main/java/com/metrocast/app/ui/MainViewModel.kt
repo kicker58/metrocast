@@ -133,6 +133,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Updates copy: on opening the app at home (at most every 6 hours), get a new version ready. */
+    fun updateCheckOnOpen() {
+        if (!com.metrocast.app.data.Updater.enabled) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val found = runCatching { repo.dailyUpdateCheck(opened = true) }.getOrNull()
+            if (found != null) _state.update { it.copy(update = found) }
+        }
+    }
+
+    /** The update banner: installs the downloaded update now. False if it isn't downloaded (or allowed) yet. */
+    fun installReadyUpdate(): Boolean {
+        val (info, file) = repo.readyUpdate() ?: return false
+        val ctx = getApplication<Application>()
+        if (!com.metrocast.app.data.Updater.canInstall(ctx)) return false // Settings asks for the one-time permission
+        return com.metrocast.app.data.UpdateInstaller.install(ctx, file, info.versionName)
+    }
+
     /** Call after settings change so the UI reflects them right away. */
     fun reloadFromCache() {
         viewModelScope.launch {
@@ -140,7 +157,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val work = trackWork()
             val elev = runCatching { repo.myElevatorOutages() }.getOrDefault(emptyList())
             val upd = runCatching { repo.autoCheckUpdate() }.getOrNull() // what the nightly check found
-            _state.update { it.copy(snapshot = snapshot, maps = maps, live = live, trackWork = work, elevators = elev) }
+            _state.update { it.copy(snapshot = snapshot, maps = maps, live = live, trackWork = work, elevators = elev, update = upd) }
         }
     }
 

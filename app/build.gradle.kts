@@ -55,9 +55,12 @@ android {
         versionAssets.resolve("metrocast-version.txt").writeText(ver)
         // What changed in this version (whatsnew.txt, one line each), shown once after an update.
         versionAssets.resolve("metrocast-whatsnew.txt").writeText(rootProject.file("whatsnew.txt").takeIf { it.exists() }?.readText()?.trim().orEmpty())
-        sourceSets.getByName("main").assets.srcDir(versionAssets)
         // -Pupdates=true: the copy that can update itself from a folder on your PC over home Wi-Fi.
         val updates = project.hasProperty("updates") && project.property("updates") == "true"
+        // Which copy this is, readable inside the APK: the PC only ever shares the "updates" one by itself
+        // (a phone moved to the public copy would lose its key and its updates).
+        versionAssets.resolve("metrocast-edition.txt").writeText(if (updates) "updates" else if (publicBuild) "public" else "full")
+        sourceSets.getByName("main").assets.srcDir(versionAssets)
         buildConfigField("boolean", "UPDATES", updates.toString())
         manifestPlaceholders["netConfig"] = if (updates) "@xml/network_security_config_home" else "@xml/network_security_config"
         manifestPlaceholders["installPermission"] = if (updates) "android.permission.REQUEST_INSTALL_PACKAGES" else "com.metrocast.app.permission.NONE"

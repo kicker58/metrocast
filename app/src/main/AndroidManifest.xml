@@ -118,5 +118,12 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_paths" />
         </provider>
+        <!-- Updates copy: how an update went, and "just updated" (both inert in the other copies). -->
+        <receiver android:name=".notify.UpdateStatusReceiver" android:exported="false" />
+        <receiver android:name=".notify.AppUpdatedReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

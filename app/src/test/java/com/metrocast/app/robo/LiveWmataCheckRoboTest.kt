@@ -50,4 +50,13 @@ class LiveWmataCheckRoboTest {
         t("reopen: whole refresh (files cached)") { runBlocking { r.refresh(forceWeather = true, extras = false) } }
         println("LIVETIME maps: " + r.lineMaps().entries.joinToString { "${it.key}=${it.value.trains.size + it.value.branchTrains.size}" })
     }
+
+    /** How many entries WMATA's position feed has right now (counts only). */
+    @Test fun feedSizeNow() {
+        assumeTrue(System.getProperty("metrocast.livecheck") != null)
+        val raw = com.metrocast.app.data.WmataApi.trainPositionsRaw(com.metrocast.app.BuildConfig.WMATA_KEY)
+        val arr = org.json.JSONObject(raw).getJSONArray("TrainPositions")
+        val withLine = (0 until arr.length()).count { !arr.getJSONObject(it).isNull("LineCode") }
+        println("LIVEFEED entries=${arr.length()} withLine=$withLine bytes=${raw.length}")
+    }
 }

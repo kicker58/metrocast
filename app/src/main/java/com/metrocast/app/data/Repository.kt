@@ -445,24 +445,48 @@ class Repository(context: Context) {
     }
 
     /**
-     * The nightly check (around 1 AM, Wi-Fi): asks your PC at most once a day. A newer version is
-     * remembered for the home screen, and announced once with a silent notification.
+     * The nightly check (around 1 AM, Wi-Fi) — and, with [opened], a check when you open the app at home
+     * (at most every 6 hours). Asks your PC; if its address changed, finds it again on the home network.
+     * A newer version is downloaded and checked ahead of time. At night it's then installed (without a
+     * prompt where Android allows it; otherwise a notification opens Android's Update button). When you
+     * open the app it's only got ready: the home screen offers it, one tap installs.
      */
-    fun dailyUpdateCheck(now: Long = System.currentTimeMillis(), retry: Boolean = false): Updater.Info? {
+    fun dailyUpdateCheck(now: Long = System.currentTimeMillis(), retry: Boolean = false, opened: Boolean = false): Updater.Info? {
         pcDidntAnswer = false
         if (!Updater.enabled || prefs.updateAddress.isBlank()) return null
-        if (now - prefs.updateCheckedAt < 20 * 60 * 60_000L) return autoCheckUpdate() // once a day at most
+        val gap = if (opened) 6 * 60 * 60_000L else 20 * 60 * 60_000L // once a day at night; every 6 h when you open the app
+        if (now - prefs.updateCheckedAt < gap) return autoCheckUpdate()
         // Only on your home Wi-Fi (the same network as your PC); anywhere else, don't try.
-        if (!Updater.onHomeNetwork(prefs.updateAddress, Updater.phoneWifiAddresses(appContext))) return autoCheckUpdate()
-        val result = Updater.check(prefs.updateAddress, com.metrocast.app.BuildConfig.VERSION_CODE)
+        val phone = Updater.phoneWifiAddresses(appContext)
+        if (!Updater.onHomeNetwork(prefs.updateAddress, phone)) return autoCheckUpdate()
+        var result = Updater.check(prefs.updateAddress, com.metrocast.app.BuildConfig.VERSION_CODE)
+        // No answer: the PC may have a new address (routers change them). Look for it on the home network.
+        if (result is Updater.Result.Problem) {
+            Updater.findPc(phone)?.takeIf { it != prefs.updateAddress }?.let { found ->
+                val again = Updater.check(found, com.metrocast.app.BuildConfig.VERSION_CODE)
+                if (again !is Updater.Result.Problem) { prefs.updateAddress = found; result = again }
+            }
+        }
         // PC off or server not running: the first try of the night doesn't use up the day (one retry later).
-        if (result is Updater.Result.Problem && !retry) { pcDidntAnswer = true; return autoCheckUpdate() }
+        if (result is Updater.Result.Problem && !retry && !opened) { pcDidntAnswer = true; return autoCheckUpdate() }
+        // The night's retry failed too: that's the day done. (A check on opening the app doesn't use it up.)
+        if (result is Updater.Result.Problem) { if (!opened) prefs.updateCheckedAt = now; return autoCheckUpdate() }
         prefs.updateCheckedAt = now
         val info = (result as? Updater.Result.Available)?.info ?: return autoCheckUpdate()
         val announced = prefs.updateFound?.let { Updater.parse(it) }?.versionCode
         prefs.updateFound = Updater.toJson(info)
-        if (announced != info.versionCode) com.metrocast.app.notify.Notifier.updateReady(appContext, info.versionName)
+        // Ready ahead of time: downloaded and checked, so installing is instant.
+        val file = runCatching { UpdateInstaller.prepare(appContext, prefs.updateAddress, info) }.getOrNull()
+        val installing = file != null && !opened && Updater.canInstall(appContext) &&
+            UpdateInstaller.install(appContext, file, info.versionName)
+        if (!installing && announced != info.versionCode) com.metrocast.app.notify.Notifier.updateReady(appContext, info.versionName)
         return info
+    }
+
+    /** The update from your PC, downloaded and ready to install now, or null. */
+    fun readyUpdate(): Pair<Updater.Info, java.io.File>? {
+        val info = autoCheckUpdate() ?: return null
+        return UpdateInstaller.ready(appContext, info)?.let { info to it }
     }
 
     // ------------------------------------------------------------------ flights

@@ -120,6 +120,50 @@ object Updater {
         return if (info.versionCode > currentVersion) Result.Available(info) else Result.UpToDate(info.versionName)
     }
 
+    /** Tests only: stands in for searching the home network. */
+    @JvmField var testFindPc: ((List<String>) -> String?)? = null
+
+    /** True for home-network addresses (10.x, 172.16–31.x, 192.168.x): the only places MetroCast looks. */
+    fun isPrivate(ip: String): Boolean {
+        val p = ip.split('.').mapNotNull { it.toIntOrNull() }.takeIf { it.size == 4 } ?: return false
+        return p[0] == 10 || (p[0] == 172 && p[1] in 16..31) || (p[0] == 192 && p[1] == 168)
+    }
+
+    /**
+     * Your PC's address, found by asking the other addresses on this phone's home network (the 254 next to
+     * its own) for MetroCast's version.json, in parallel. For when the PC's address changed (routers do
+     * that). Only private home addresses; a few seconds at most. Null if no MetroCast Updates answered.
+     */
+    fun findPc(phoneAddresses: List<String>, port: Int = DEFAULT_PORT, deadlineMs: Long = 8_000): String? {
+        testFindPc?.let { return it(phoneAddresses) }
+        val hosts = phoneAddresses.filter { isPrivate(it) }.flatMap { ip ->
+            val p = ip.split('.')
+            (1..254).map { "${p[0]}.${p[1]}.${p[2]}.$it" }.filter { it != ip }
+        }.distinct()
+        if (hosts.isEmpty()) return null
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(48)
+        try {
+            val done = java.util.concurrent.ExecutorCompletionService<String?>(pool)
+            hosts.forEach { h ->
+                done.submit {
+                    runCatching {
+                        // Quick knock first: almost every address has nothing listening.
+                        java.net.Socket().use { it.connect(java.net.InetSocketAddress(h, port), 400) }
+                        h.takeIf { parse(Http.get("http://$h:$port/version.json")) != null }
+                    }.getOrNull()
+                }
+            }
+            val end = System.currentTimeMillis() + deadlineMs
+            repeat(hosts.size) {
+                val left = end - System.currentTimeMillis()
+                if (left <= 0) return null
+                val f = done.poll(left, java.util.concurrent.TimeUnit.MILLISECONDS) ?: return null
+                runCatching { f.get() }.getOrNull()?.let { return it }
+            }
+            return null
+        } finally { pool.shutdownNow() }
+    }
+
     fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     /** Downloads the update and checks it's the exact file version.json describes. */

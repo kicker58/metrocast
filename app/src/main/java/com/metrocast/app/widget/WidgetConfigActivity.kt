@@ -61,6 +61,9 @@ class WidgetConfigActivity : ComponentActivity() {
         // Backing out cancels adding the widget.
         setResult(RESULT_CANCELED, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId))
         if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) { finish(); return }
+        // Any app can open this screen: only for a MetroCast widget, never someone else's (or a made-up number).
+        val provider = runCatching { AppWidgetManager.getInstance(this).getAppWidgetInfo(widgetId)?.provider?.packageName }.getOrNull()
+        if (provider != packageName) { finish(); return }
         val repo = Repository(this)
         val style = runCatching { AppWidgetManager.getInstance(this).getAppWidgetInfo(widgetId)?.loadLabel(packageManager) }.getOrNull()
         setContent {

@@ -675,40 +675,64 @@ internal fun UpdatesCard(repo: Repository, edition: String) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var address by remember { mutableStateOf(p.updateAddress) }
-    var status by remember { mutableStateOf<String?>(null) }
-    var found by remember { mutableStateOf<com.metrocast.app.data.Updater.Info?>(null) }
+    // Already found (and maybe downloaded) by the nightly or on-open check: Install is there straight away.
+    var found by remember { mutableStateOf(repo.autoCheckUpdate()) }
+    var status by remember { mutableStateOf(p.updateProblem?.let { "Last try didn't install: $it" } ?: found?.let { f ->
+        if (com.metrocast.app.data.UpdateInstaller.ready(ctx, f) != null) "Version ${f.versionName} is downloaded and ready." else "Version ${f.versionName} is ready on your PC." }) }
     var busy by remember { mutableStateOf(false) }
     SettingsCard(title = "MetroCast version ${com.metrocast.app.BuildConfig.VERSION_NAME}", subtitle = edition) {
         Text("UPDATES FROM YOUR PC", style = MaterialTheme.typography.labelMedium, letterSpacing = 1.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
-            "On your PC, open the \"Updates from your PC\" folder and double-click \"MetroCast Updates\". Type the address it shows here. " +
-                "The phone must be on the same Wi-Fi. Nothing goes over the internet. " +
-                "MetroCast also checks by itself once a day, around 1 AM, only when it's on your home Wi-Fi (the same network as your PC), and lets you know when there's an update.",
+            "On your PC, open \"MetroCast Updates\" (it can start with Windows). New versions you download there are shared by themselves. " +
+                "MetroCast checks your PC every night around 1 AM and when you open it at home, gets new versions ready, and installs them " +
+                "(after the first one, usually without asking). Only over your home Wi-Fi; nothing goes over the internet.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         OutlinedTextField(
             value = address, onValueChange = { address = it.take(60); p.updateAddress = address; com.metrocast.app.notify.UpdateCheckWorker.sync(ctx) },
-            label = { Text("Your PC's address") }, placeholder = { Text("192.168.1.20") }, singleLine = true,
+            label = { Text("Your PC's address") }, placeholder = { Text("leave blank and tap Find my PC") }, singleLine = true,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         )
-        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            androidx.compose.material3.Button(enabled = !busy && address.isNotBlank(), onClick = {
-                // You tapped it: always try your PC (only the 1 AM check insists on your home Wi-Fi first).
+
+        /** Looks for the PC on the home network; fills in the address if it answers. */
+        suspend fun find(): String? {
+            val phone = com.metrocast.app.data.Updater.phoneWifiAddresses(ctx)
+            val pc = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.metrocast.app.data.Updater.findPc(phone) }
+            if (pc != null) { address = pc; p.updateAddress = pc; com.metrocast.app.notify.UpdateCheckWorker.sync(ctx) }
+            return pc
+        }
+
+        fun check() {
+            busy = true; status = if (address.isBlank()) "Looking for your PC…" else "Checking…"; found = null
+            scope.launch {
                 val phone = com.metrocast.app.data.Updater.phoneWifiAddresses(ctx)
-                val home = com.metrocast.app.data.Updater.onHomeNetwork(address, phone)
-                busy = true; status = "Checking…"; found = null
-                scope.launch {
-                    val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.metrocast.app.data.Updater.check(address, com.metrocast.app.BuildConfig.VERSION_CODE) }
-                    busy = false
-                    when (r) {
-                        is com.metrocast.app.data.Updater.Result.Available -> { found = r.info; status = "Version ${r.info.versionName} is ready." + if (r.info.notes.isNotBlank()) " ${r.info.notes}" else "" }
-                        is com.metrocast.app.data.Updater.Result.UpToDate -> status = "You're up to date (version ${r.versionName} is the newest on your PC)."
-                        is com.metrocast.app.data.Updater.Result.Problem -> status = r.message + if (home) "" else
-                            " " + com.metrocast.app.data.Updater.whereThePhoneIs(phone) +
-                                (com.metrocast.app.data.Updater.homeBlock(address)?.let { " Your PC is on $it.x: connect to that Wi-Fi, and turn off any VPN (Settings › Network › VPN) if one is on." } ?: "")
+                val home = address.isNotBlank() && com.metrocast.app.data.Updater.onHomeNetwork(address, phone)
+                var r = if (address.isBlank()) null else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.metrocast.app.data.Updater.check(address, com.metrocast.app.BuildConfig.VERSION_CODE) }
+                var moved: String? = null
+                // No address yet, or no answer: look for the PC on the home network (its address may have changed).
+                if (r == null || r is com.metrocast.app.data.Updater.Result.Problem) {
+                    status = "Looking for your PC on this Wi-Fi…"
+                    val before = address
+                    find()?.let { pc ->
+                        moved = pc.takeIf { it != before }
+                        r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.metrocast.app.data.Updater.check(pc, com.metrocast.app.BuildConfig.VERSION_CODE) }
                     }
                 }
-            }) { Text("Check for updates") }
+                busy = false
+                val prefix = moved?.let { "Found your PC at $it. " } ?: ""
+                status = prefix + when (val res = r) {
+                    is com.metrocast.app.data.Updater.Result.Available -> { found = res.info; p.updateFound = com.metrocast.app.data.Updater.toJson(res.info); "Version ${res.info.versionName} is ready." + if (res.info.notes.isNotBlank()) " ${res.info.notes}" else "" }
+                    is com.metrocast.app.data.Updater.Result.UpToDate -> "You're up to date (version ${res.versionName} is the newest on your PC)."
+                    is com.metrocast.app.data.Updater.Result.Problem -> res.message + if (home) "" else
+                        " " + com.metrocast.app.data.Updater.whereThePhoneIs(phone) +
+                            (com.metrocast.app.data.Updater.homeBlock(address)?.let { " Your PC is on $it.x: connect to that Wi-Fi, and turn off any VPN (Settings › Network › VPN) if one is on." } ?: "")
+                    null -> "Couldn't find MetroCast Updates on this Wi-Fi. Is it open on your PC (and allowed on Private networks)? " + com.metrocast.app.data.Updater.whereThePhoneIs(phone)
+                }
+            }
+        }
+
+        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            androidx.compose.material3.Button(enabled = !busy, onClick = { check() }) { Text(if (address.isBlank()) "Find my PC" else "Check for updates") }
             val info = found
             if (info != null) androidx.compose.material3.FilledTonalButton(enabled = !busy, onClick = {
                 if (!com.metrocast.app.data.Updater.canInstall(ctx)) {
@@ -716,12 +740,15 @@ internal fun UpdatesCard(repo: Repository, edition: String) {
                     runCatching { ctx.startActivity(com.metrocast.app.data.Updater.allowInstallsIntent(ctx)) }
                     return@FilledTonalButton
                 }
-                busy = true; status = "Downloading…"
+                busy = true; status = if (com.metrocast.app.data.UpdateInstaller.ready(ctx, info) != null) "Installing…" else "Downloading…"
+                p.updateProblem = null
                 scope.launch {
-                    val file = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { com.metrocast.app.data.Updater.download(ctx, address, info) } }
+                    val file = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { com.metrocast.app.data.UpdateInstaller.prepare(ctx, address, info) } }
                     busy = false
                     file.onSuccess { f ->
-                        status = runCatching { ctx.startActivity(com.metrocast.app.data.Updater.installIntent(ctx, f)) }
+                        status = if (com.metrocast.app.data.UpdateInstaller.install(ctx, f, info.versionName))
+                            "Installing ${info.versionName}… If Android asks, tap Update. MetroCast restarts as the new version."
+                        else runCatching { ctx.startActivity(com.metrocast.app.data.Updater.installIntent(ctx, f)) } // the older way, if the installer session couldn't start
                             .fold({ "Opening the installer — tap Update there." }, { "Couldn't open Android's installer (${it.javaClass.simpleName}: ${it.message})." })
                     }.onFailure { status = it.message ?: "Download failed — try again." }
                 }

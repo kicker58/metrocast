@@ -11,6 +11,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.metrocast.app.data.CrashLog
@@ -114,6 +115,7 @@ abstract class SimPhone(private val name: String, private val seed: Int) {
         val hit = compose.onAllNodes(hasText(dest.take(5), substring = true) and hasClickAction()).fetchSemanticsNodes()
         if (hit.isEmpty()) { note("station search found nothing for \"${dest.take(5)}\""); back(); return }
         tap(hit.first(), "pick $dest")
+        if (rnd.nextInt(3) == 0) typeLeaving()
         if (!sees("Start live trip")) { log += "no route to $dest"; return }
         tapText("Start live trip")
         if (sees("No, I'll tap the button")) tapText("No, I'll tap the button")
@@ -166,6 +168,23 @@ abstract class SimPhone(private val name: String, private val seed: Int) {
     private val recoveries = ArrayList<Long>()
     private val slowest = sortedMapOf<Int, Long>()
     private val kinds = listOf("feed down", "error 500", "garbage", "offline", "timeouts", "slow weather", "phone waking")
+
+    /** Trip planner: type when you're leaving (good times, odd ones and junk), maybe AM/PM, then Done or Leaving now. */
+    private fun typeLeaving() {
+        if (!sees("LEAVING")) return
+        compose.onAllNodes(hasText("Change", substring = true) and hasClickAction()).fetchSemanticsNodes().firstOrNull()?.let { tap(it, "Change leaving") } ?: return
+        val box = compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes()
+        if (box.isEmpty()) { note("leaving time: no box to type in"); return }
+        val t = listOf("5:30", "845", "12:00", "0:00", "23:59", "7", "1230", "13:45", "99:99", "12:60", "", "::", "1.15", "6.5", "１２：３０", "aa", "-3", "999999")[rnd.nextInt(18)]
+        log += "type leaving \"$t\""
+        compose.onAllNodes(hasSetTextAction())[box.size - 1].performTextReplacement(t); idle(); check()
+        if (rnd.nextBoolean()) tapText(if (rnd.nextBoolean()) "AM" else "PM")
+        if (rnd.nextInt(4) == 0) compose.onAllNodes(hasText("+") and hasClickAction()).fetchSemanticsNodes().lastOrNull()?.let { tap(it, "+ time") }
+        // Done only works for a real time; otherwise "Leaving now".
+        val done = compose.onAllNodes(hasText("Done") and hasClickAction() and SemanticsMatcher("enabled") { !it.config.contains(SemanticsProperties.Disabled) }).fetchSemanticsNodes().firstOrNull()
+        if (done != null && rnd.nextInt(5) != 0) tap(done, "Done") else tapText("Leaving now")
+        if (sees("Leaving now") && done != null && log.last() == "Done" && t.isNotBlank() && Regex("""\d""").containsMatchIn(t).not()) note("leaving time: Done took \"$t\"")
+    }
 
     private fun trains() {
         if (!menu("Amtrak, MARC & VRE")) return
@@ -510,6 +529,7 @@ abstract class SimPhone(private val name: String, private val seed: Int) {
             val screens = listOf("Trip planner", "Live trains", "Train maps", "Saved routes", "Trip history", "Restrooms", "Track work calendar", "Bikes", "Metro Police", "Special trains", "Scenic rides", "Train issues", "Airports", "Amtrak, MARC & VRE", "Settings").filter { s -> log.any { it == s } }
             if (recoveries.isNotEmpty()) appendLine("  live trains back after trouble: typically ${recoveries.sorted()[recoveries.size / 2]} ms, slowest ${recoveries.max()} ms (${recoveries.size} times)")
             if (slowest.isNotEmpty()) appendLine("    slowest by kind: " + slowest.entries.joinToString { "${kinds[it.key]} ${it.value} ms" })
+            appendLine("  leaving times typed in the planner: ${log.count { it.startsWith("type leaving") }} (${log.count { it == "Done" }} accepted with Done)")
             if (attacksDone.isNotEmpty()) appendLine("  attacks: " + attacksDone.entries.sortedBy { it.key }.joinToString { "${it.key} ×${it.value}" })
             appendLine("  screens opened: ${screens.size} of 15 · different buttons tapped: ${log.filter { it != "back" && it != "?" }.map { it.take(30) }.toSet().size}")
             stopped?.let { t -> val root = generateSequence(t) { it.cause }.last()
